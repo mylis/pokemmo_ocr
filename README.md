@@ -1,6 +1,6 @@
 # PokéMMO Screenshot Exporter (OCR Tool)
 
-A web-based OCR tool that extracts Pokémon data from **PokéMMO PC screenshots** and converts it into structured, reusable formats.
+A web-based OCR tool that extracts Pokémon data from PokéMMO PC screenshots and converts it into structured, reusable formats.
 
 This tool eliminates manual data entry and makes it easy to:
 
@@ -14,22 +14,14 @@ This tool eliminates manual data entry and makes it easy to:
 ## Features
 
 - Upload or drag & drop PokéMMO screenshots
-- OCR-powered stat extraction using **EasyOCR**
-- Automatic detection of:
-  - Pokémon species
-  - Nickname
-  - Level
-  - Nature
-  - Ability
-  - Held item
-  - EVs / IVs
-  - Moves
+- OCR-powered stat extraction using EasyOCR
+- Automatic detection of Pokémon species, nickname, level, nature, ability, item, EVs, IVs, and moves
 - Canonical correction of Pokémon, move, and item names
 - Responsive UI (table on desktop, cards on mobile)
-- One-click **PokéPaste copy**
-- **CSV export** (Google Sheets compatible)
+- One-click PokéPaste copy
+- CSV export compatible with Google Sheets
 - Debug mode with raw OCR output
-- Firestore-ready JSON output for external apps
+- Firestore-ready JSON output
 
 ---
 
@@ -37,7 +29,7 @@ This tool eliminates manual data entry and makes it easy to:
 
 ```
 pokemmo-ocr/
-├─ poke-ocr-api/        # FastAPI backend
+├─ poke-ocr-api/
 │  ├─ app.py
 │  ├─ parse.py
 │  ├─ lookup.py
@@ -45,7 +37,7 @@ pokemmo-ocr/
 │  ├─ requirements.txt
 │  └─ run.bat
 │
-├─ poke-ocr-ui/         # Static frontend
+├─ poke-ocr-ui/
 │  ├─ index.html
 │  └─ assets/
 │
@@ -57,61 +49,54 @@ pokemmo-ocr/
 
 ## Running the Backend (API)
 
-Build the image
+### Docker (Recommended)
 
-1. From inside poke-ocr-api/:
+From inside `poke-ocr-api/`:
+
+```
 docker build -t poke-ocr-api .
-
-2. Run the container
 docker run --rm --gpus all -e EASYOCR_GPU=1 -p 8000:8000 poke-ocr-api
-
+```
 
 The API will be available at:
+
+```
 http://localhost:8000
-
-
-Health check:
-http://localhost:8000/health
+```
 
 ---
 
 ## API Endpoints
-GET /health
+
+### Health Check
 
 Simple health check to verify the API is running.
 
-Response
+```
+GET /health
+```
 
-{
-  "ok": true
-}
+Response:
+```
+{ "ok": true }
+```
 
-POST /parse
+
+### POST /parse
 
 Parses one or more PokéMMO screenshots and returns structured data suitable for:
 
-UI rendering
+- UI rendering  
+- CSV export  
+- PokéPaste generation  
 
-CSV export
+Request:
+- multipart/form-data
+- Field name: `files`
+- Accepts multiple image files
 
-PokéPaste generation
-
-Request
-
-multipart/form-data
-
-Field name: files
-
-Accepts multiple image files
-
-Example
-
-POST /parse
-Content-Type: multipart/form-data
-
-
-Response
-
+Response:
+```
 {
   "ok": true,
   "rows": [
@@ -145,139 +130,124 @@ Response
     }
   ]
 }
+```
 
+---
 
-Notes:
+### POST /parse_firestore
 
-Any value not confidently detected is returned empty or 0
+Returns Pokémon data formatted for Firestore or other external applications.
 
-Canonical name matching is applied (moves, items, Pokémon)
+Intended for:
+- Pokédex apps  
+- Collection tracking  
+- PvP and team builders  
 
-Final move selection prioritizes exact matches before fuzzy matching
+Request:
+- multipart/form-data
+- Field name: `files`
 
-POST /parse_firestore
-
-Returns Pokémon data formatted for Firestore / external apps.
-
-This endpoint is intended for:
-
-Pokédex apps
-
-Collection tracking
-
-PvP / team management tools
-
-Request
-
-Same as /parse
-
-multipart/form-data
-
-Field name: files
-
-Response
-
+Response:
+```
 {
-  "items": [
-    {
-      "id": "auto-generated-id",
-      "species": "Kingdra",
-      "nickname": "dagod",
-      "level": 100,
-      "stats": {
-        "hp": 292,
-        "atk": 191,
-        "def": 226,
-        "spa": 317,
-        "spd": 226,
-        "spe": 269
-      },
-      "evs": {
-        "hp": 6,
-        "atk": 0,
-        "def": 0,
-        "spa": 252,
-        "spd": 0,
-        "spe": 252
-      },
-      "ivs": {
-        "hp": 31,
-        "atk": 18,
-        "def": 31,
-        "spa": 31,
-        "spd": 31,
-        "spe": 31
-      },
-      "nature": "Modest",
-      "item": "Life Orb",
-      "moves": [
-        "Protect",
-        "Muddy Water",
-        "Dragon Pulse",
-        "Weather Ball"
-      ],
-      "gender": "unknown"
-    }
-  ]
+  "id": "",
+  "ownerId": "",
+  "species": "Kingdra",
+  "nickname": "Kindri",
+  "level": 100,
+  "stats": {
+    "hp": 292,
+    "atk": 191,
+    "def": 226,
+    "spa": 317,
+    "spd": 226,
+    "spe": 269
+  },
+  "evs": {
+    "hp": 6,
+    "atk": 0,
+    "def": 0,
+    "spa": 252,
+    "spd": 0,
+    "spe": 252
+  },
+  "ivs": {
+    "hp": 31,
+    "atk": 18,
+    "def": 31,
+    "spa": 31,
+    "spd": 31,
+    "spe": 31
+  },
+  "nature": "Modest",
+  "item": "Life Orb",
+  "moves": [
+    "Protect",
+    "Dragon Pulse",
+    "Weather Ball",
+    "Muddy Water"
+  ],
+  "notes": "",
+  "shiny": null,
+  "encounters": 0,
+  "gender": "unknown",
+  "form": "",
+  "secretShiny": null,
+  "encounterType": "",
+  "ot": null,
+  "alpha": null,
+  "addedAt": "",
+  "pvp": null,
+  "e4": null,
+  "gymReRuns": null,
+  "contestRibbons": null,
+  "raidReady": null,
+  "collectable": null,
+  "eggMoves": null,
+  "catchDate": ""
 }
-
-
-Notes:
-
-Fields not found by OCR remain empty or defaulted
-
-No UI-specific fields are included
-
-Ideal for direct Firestore insertion
-
+```
 ---
 
 ## Frontend Usage
 
-Open:
+Open directly:
+
 ```
 poke-ocr-ui/index.html
 ```
 
-### Query Parameters
-| Param | Description |
-|-----|-------------|
-| `api` | API base URL |
-| `debug=1` | Enables debug + Firestore mode |
+### URL Parameters
+
+| Parameter | Description |
+|---------|-------------|
+| api | API base URL |
+| debug=1 | Enables debug + Firestore mode |
 
 ---
 
-## 📸 Screenshot Guidelines
+## Screenshot Guidelines
 
-- Default PokéMMO theme
+- Use default PokéMMO theme
 - One Pokémon per screenshot
-- Pokémon summary fully visible
-- No overlays or chat
-- No chat windows or UI overlays
-- No cropped or resized images
+- Stats, EVs, IVs, moves visible
+- No overlays or chat windows
+- No cropped or resized images  
 
 ---
 
-## Author & Feedback
-
-Built by Mylis
+## Feedback
 
 This project was created for the PokéMMO community to save time and reduce manual work.
+Feedback, bug reports, and improvement ideas are welcome.
 
-Feedback, bug reports, and improvement ideas are very welcome:
-
-If OCR fails on a screenshot, feel free to share it
-
-If you have feature ideas (filters, exports, integrations), let me know
-
-If you plan to integrate this into another app, I’d love to hear about it
-
-Contact
-
-🧵 PokéMMO Forums:
+PokéMMO Forums  
 https://forums.pokemmo.com/index.php?/profile/558365-mylis/
 
-💬 Discord: .Mylis
+Discord  
+.Mylis
+
+---
 
 ## Disclaimer
 
