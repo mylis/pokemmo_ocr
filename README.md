@@ -4,10 +4,13 @@ A web-based OCR tool that extracts Pokémon data from PokéMMO PC screenshots an
 
 This tool eliminates manual data entry and makes it easy to:
 
-- Build PvP teams
+- Build PvP/Raid teams
 - Export Pokémon to Google Sheets
 - Generate PokéPaste sets
 - Feed Pokémon data into Firestore-backed applications
+
+Live Demo:
+https://mylis.github.io/pokemmo_ocr/
 
 ---
 
@@ -37,10 +40,8 @@ pokemmo-ocr/
 │  ├─ requirements.txt
 │  └─ run.bat
 │
-├─ poke-ocr-ui/
-│  ├─ index.html
-│  └─ assets/
-│
+├─ index.html
+├─ assets/
 ├─ .gitignore
 └─ README.md
 ```
@@ -214,7 +215,7 @@ Response:
 Open directly:
 
 ```
-poke-ocr-ui/index.html
+Index.html
 ```
 
 ### URL Parameters
@@ -252,4 +253,4 @@ Discord
 ## Disclaimer
 
 Pokémon and PokéMMO are trademarks of their respective owners.
-This project is community-made and not affiliated with PokéMMO.
+This project is community-made and not affiliated with PokéMMO or Pokémon.
