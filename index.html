@@ -39,7 +39,7 @@
 
             <div class="min-w-0">
                 <div id="loadingTitle" class="text-sm font-semibold text-slate-200">
-                    Processing screenshots…
+                    Processing…
                 </div>
                 <div id="loadingSub" class="text-xs text-slate-400">
                     0 / 0 completed
@@ -81,8 +81,8 @@
 
             <div class="flex flex-wrap items-center gap-2">
                 <label class="cursor-pointer rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold hover:bg-white/10">
-          Upload screenshots
-          <input id="fileInput" type="file" accept="image/*" multiple class="hidden" />
+          Upload screenshots / video
+          <input id="fileInput" type="file" accept="image/*,video/*" multiple class="hidden" />
         </label>
                 <button id="btnProcess" class="rounded-xl bg-indigo-400 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-indigo-300 active:scale-[0.99]">
                 Load
@@ -107,7 +107,7 @@
         </div>
         <!-- Dropzone -->
         <div id="drop" class="mt-4 rounded-2xl border-2 border-dashed border-white/15 bg-white/5 p-6 text-center transition">
-            <div class="text-sm font-semibold">Drag & drop screenshots here</div>
+            <div class="text-sm font-semibold">Drag & drop screenshots or a video here</div>
             <div class="mt-1 text-xs text-slate-300/80">Tip: keep the screenshot style consistent for best OCR.</div>
         </div>
 
@@ -289,9 +289,15 @@
         }
 
         fileInput.addEventListener("change", function() {
-            var n = (fileInput.files || []).length;
-            if (n) setStatus(n + " file(s) selected. Ready to process.");
+            var files = Array.from(fileInput.files || []);
+            if (!files.length) return;
+
+            var t = selectionType(files);
+            if (t === "video") setStatus("1 video selected. Ready to process.");
+            else if (t === "images") setStatus(files.length + " screenshot(s) selected. Ready to process.");
+            else setStatus("Please select either screenshots OR one video (not both).");
         });
+
 
         btnFirestore.addEventListener("click", function() {
             var files = Array.from(fileInput.files || []);
@@ -304,10 +310,77 @@
             var dt = e.dataTransfer;
             if (!dt || !dt.files) return [];
             var arr = Array.from(dt.files);
+
+            // allow images + video
             return arr.filter(function(f) {
-                return f.type && f.type.indexOf("image/") === 0;
+                return f.type && (f.type.indexOf("image/") === 0 || f.type.indexOf("video/") === 0);
             });
         }
+
+        // -------------------------
+        // Clipboard paste support
+        // -------------------------
+        function filesFromClipboardEvent(e) {
+            var cd = e.clipboardData;
+            if (!cd || !cd.items) return [];
+
+            var files = [];
+
+            for (var i = 0; i < cd.items.length; i++) {
+                var it = cd.items[i];
+
+                // Prefer file-kind items (images are usually here)
+                if (it.kind === "file") {
+                    var f = it.getAsFile();
+                    if (f) files.push(f);
+                    continue;
+                }
+
+                // Some browsers expose images as "image/png" etc but still kind=file;
+                // nothing else to do here.
+            }
+
+            // Filter to image/video only
+            files = files.filter(function(f) {
+                return f && f.type && (f.type.indexOf("image/") === 0 || f.type.indexOf("video/") === 0);
+            });
+
+            // If the clipboard includes multiple items, keep as-is.
+            return files;
+        }
+
+        // Where to listen:
+        // - document: allows paste anywhere
+        // - drop zone: optional focus target
+        document.addEventListener("paste", function(e) {
+            var files = filesFromClipboardEvent(e);
+            if (!files.length) return;
+
+            // Prevent pasting the image into some focused element (if any)
+            e.preventDefault();
+
+            // Use last selected mode:
+            // - if user last clicked Firestore, paste goes Firestore
+            // - otherwise normal parse
+            var mode = (lastMode === "firestore") ? "firestore" : "parse";
+
+            setStatus("Pasted " + files.length + " item(s) from clipboard. Processing…");
+            processFiles(files, mode);
+        });
+
+        // Optional: allow focusing the drop area so users can click it then paste
+        drop.setAttribute("tabindex", "0");
+        drop.addEventListener("click", function() {
+            drop.focus();
+        });
+        drop.addEventListener("keydown", function(e) {
+            // Nice UX: Enter/Space opens file picker
+            if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                fileInput.click();
+            }
+        });
+
 
         // Dropzone styling
         drop.addEventListener("dragover", function(e) {
@@ -333,9 +406,34 @@
             processFiles(files, "parse");
         });
 
+        function isVideoFile(f) {
+            return f && f.type && f.type.indexOf("video/") === 0;
+        }
+
+        function isImageFile(f) {
+            return f && f.type && f.type.indexOf("image/") === 0;
+        }
+
+        function selectionType(files) {
+            // returns: "images" | "video" | "mixed" | "empty"
+            if (!files || !files.length) return "empty";
+            var hasVid = files.some(isVideoFile);
+            var hasImg = files.some(isImageFile);
+            if (hasVid && hasImg) return "mixed";
+            if (hasVid) return "video";
+            return "images";
+        }
+
 
         async function processFiles(files, mode) {
             if (!files || !files.length) return;
+
+            // Decide type
+            var selType = selectionType(files);
+            if (selType === "mixed") {
+                setStatus("Please upload either screenshots OR one video, not both at once.");
+                return;
+            }
 
             // start fresh
             lastRows = [];
@@ -350,16 +448,7 @@
 
             lastMode = mode;
 
-            var total = files.length;
-            var done = 0;
-
             cancelRequested = false;
-
-            var endpoint = (mode === "firestore") ? "/parse_firestore" : "/parse";
-            var titleBase = (mode === "firestore") ? "Processing (Firestore)…" : "Processing screenshots…";
-
-            showLoadingWithProgress(titleBase, done, total);
-            setStatus(titleBase + " " + total + " file(s)…");
 
             // Disable buttons during processing
             btnProcess.disabled = true;
@@ -367,6 +456,71 @@
             btnCsv.disabled = true;
 
             try {
+                if (selType === "video") {
+                    // --- VIDEO PATH ---
+                    var video = files[0];
+
+                    // endpoints
+                    var endpoint = (mode === "firestore") ? "/parse_video_firestore" : "/parse_video";
+                    var titleBase = (mode === "firestore") ? "Processing video (Firestore)…" : "Processing video…";
+
+                    // UI: single "unit" of work
+                    showLoadingWithProgress(titleBase, 0, 1);
+                    setStatus(titleBase + " " + video.name);
+
+                    var fd = new FormData();
+                    fd.append("file", video); // IMPORTANT: backend expects "file" not "files"
+
+                    // Optional: you can pass params via query string if you want
+                    // e.g. target_fps, dist_threshold, crop
+                    // var qs = "?target_fps=3&dist_threshold=6";
+                    var qs = "";
+
+                    var resp = await fetch(apiBase + endpoint + qs, {
+                        method: "POST",
+                        body: fd
+                    });
+
+                    if (!resp.ok) {
+                        var txt = await resp.text();
+                        throw new Error("Failed on " + video.name + ": " + resp.status + " " + txt);
+                    }
+
+                    var data = await resp.json();
+
+                    // backend returns { ok, frames_total, frames_unique, rows }
+                    var rows = (data && Array.isArray(data.rows)) ? data.rows : [];
+
+                    // show extra helpful status
+                    if (data && (typeof data.frames_total === "number") && (typeof data.frames_unique === "number")) {
+                        setStatus("Video done. Frames: " + data.frames_unique + " unique / " + data.frames_total + " sampled.");
+                    } else {
+                        setStatus("Video done.");
+                    }
+
+                    lastRows = lastRows.concat(rows);
+
+                    if (mode === "firestore") renderFirestore(lastRows);
+                    else renderRows(lastRows);
+
+                    showLoadingWithProgress(titleBase, 1, 1);
+
+                    // CSV only makes sense for /parse output
+                    btnCsv.disabled = (mode === "firestore") || (lastRows.length === 0);
+
+                    return; // end video path
+                }
+
+                // --- IMAGES PATH (original behavior) ---
+                var endpoint = (mode === "firestore") ? "/parse_firestore" : "/parse";
+                var titleBase = (mode === "firestore") ? "Processing (Firestore)…" : "Processing screenshots…";
+
+                var total = files.length;
+                var done = 0;
+
+                showLoadingWithProgress(titleBase, done, total);
+                setStatus(titleBase + " " + total + " file(s)…");
+
                 for (var i = 0; i < files.length; i++) {
                     if (cancelRequested) break;
 
@@ -388,24 +542,13 @@
 
                     var data = await resp.json();
 
-                    var newRows = [];
-                    var newItems = [];
+                    // Firestore endpoint returns { ok, rows }, not items.
+                    var newRows = (data && Array.isArray(data.rows)) ? data.rows : [];
 
-                    if (mode === "firestore") {
-                        newItems = (data && Array.isArray(data.items)) ? data.items : [];
+                    lastRows = lastRows.concat(newRows);
 
-                        // helpful fallback if your backend still returns rows by mistake
-                        if (!newItems.length && data && Array.isArray(data.rows)) {
-                            newItems = data.rows;
-                        }
-
-                        lastRows = lastRows.concat(newItems);
-                        renderFirestore(lastRows);
-                    } else {
-                        newRows = (data && Array.isArray(data.rows)) ? data.rows : [];
-                        lastRows = lastRows.concat(newRows);
-                        renderRows(lastRows);
-                    }
+                    if (mode === "firestore") renderFirestore(lastRows);
+                    else renderRows(lastRows);
 
                     done++;
                     showLoadingWithProgress(titleBase, done, total);
@@ -413,9 +556,9 @@
                 }
 
                 if (cancelRequested) {
-                    setStatus("Cancelled. Processed " + done + " / " + total + " screenshot(s).");
+                    setStatus("Cancelled. Processed " + done + " / " + total + " file(s).");
                 } else {
-                    setStatus("Done. Processed " + done + " / " + total + " screenshot(s).");
+                    setStatus("Done. Processed " + done + " / " + total + " file(s).");
                 }
 
                 // CSV only makes sense for /parse output
@@ -430,7 +573,6 @@
                 btnProcess.disabled = false;
                 btnFirestore.disabled = false;
 
-                // If firestore mode, CSV stays disabled
                 if (mode === "firestore") btnCsv.disabled = true;
                 else btnCsv.disabled = !(lastRows && lastRows.length);
             }
