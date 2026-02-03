@@ -1,0 +1,70 @@
+# -------------------------
+# Python
+# -------------------------
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+pyvenv.cfg
+
+# Python build artifacts
+build/
+dist/
+
+# -------------------------
+# Logs & temp files
+# -------------------------
+*.log
+*.tmp
+*.temp
+
+# OCR / image temp outputs (if any)
+*.png~
+*.jpg~
+*.jpeg~
+
+# -------------------------
+# OS / Editor
+# -------------------------
+# Windows
+Thumbs.db
+desktop.ini
+
+# macOS
+.DS_Store
+
+# VS Code / IDEs
+.vscode/
+.idea/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# -------------------------
+# Node / frontend (future-proof)
+# -------------------------
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# -------------------------
+# GitHub Pages artifacts (if you ever build)
+# -------------------------
+_site/
+.cache/
+
+# -------------------------
+# Secrets (just in case)
+# -------------------------
+.env
+.env.*

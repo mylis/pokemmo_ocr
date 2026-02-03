@@ -1,0 +1,27 @@
+# .dockerignore
+.venv
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.log
+
+.git
+.gitignore
+
+# OS/editor junk
+.DS_Store
+Thumbs.db
+.vscode
+.idea
+
+# If you store screenshots locally
+*.png
+*.jpg
+*.jpeg
+*.webp
+
+# Optional: if you have large training/dev files
+node_modules
+dist
+build

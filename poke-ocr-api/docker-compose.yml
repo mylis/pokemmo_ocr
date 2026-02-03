@@ -1,0 +1,9 @@
+services:
+  poke-ocr-api:
+    build:
+      context: ./poke-ocr-api
+    ports:
+      - "8000:8000"
+    environment:
+      - EASYOCR_GPU=0
+    restart: unless-stopped
