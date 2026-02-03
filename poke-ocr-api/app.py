@@ -41,6 +41,41 @@ def ascii_only(s: str) -> str:
     s = "".join(ch for ch in str(s) if ord(ch) < 128)
     return s.strip()
 
+def detect_shiny(img_bgr: np.ndarray) -> bool:
+    """
+    Detects the shiny star icon in the top-left corner of the Pokémon summary UI.
+    Returns True if shiny star is present, else False.
+    """
+
+    h, w, _ = img_bgr.shape
+
+    # --- Crop region where shiny star appears ---
+    # Tuned for PokéMMO PC summary UI
+    # Adjust slightly if you change resolution/theme
+    crop = img_bgr[
+        int(0.02 * h):int(0.18 * h),   # top area
+        int(0.02 * w):int(0.18 * w)    # left area
+    ]
+
+    # Convert to HSV for robust color detection
+    hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
+
+    # Yellow/gold range (shiny star)
+    lower_yellow = np.array([18, 120, 150])
+    upper_yellow = np.array([40, 255, 255])
+
+    mask = cv2.inRange(hsv, lower_yellow, upper_yellow)
+
+    # Clean noise
+    kernel = np.ones((3, 3), np.uint8)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+
+    # Count how much "yellow star" is present
+    yellow_pixels = cv2.countNonZero(mask)
+
+    # Empirical threshold — very stable
+    return yellow_pixels > 50
+
 
 def preprocess_for_ui(img_bgr: np.ndarray) -> np.ndarray:
     gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
@@ -99,13 +134,6 @@ def pick_moves(parsed: dict, move_choices: list[str]) -> tuple[str, str, str, st
         s = re.sub(r"\s+", " ", s).strip().lower()
         return s
 
-    def prefer_dragon_variants(text_norm: str) -> str:
-        if "dragon" in text_norm and "pulse" in text_norm:
-            return "Dragon Pulse"
-        if "dragon" in text_norm and "claw" in text_norm:
-            return "Dragon Claw"
-        return ""
-
     scored = []
     for text, conf, idx in merged:
         tnorm = norm_move(text)
@@ -115,11 +143,6 @@ def pick_moves(parsed: dict, move_choices: list[str]) -> tuple[str, str, str, st
         # exact match before fuzzy
         if tnorm in canon_set:
             scored.append((canon_set[tnorm], 200, conf, idx))
-            continue
-
-        forced = prefer_dragon_variants(tnorm)
-        if forced and forced.lower() in canon_set:
-            scored.append((canon_set[forced.lower()], 190, conf, idx))
             continue
 
         hit = process.extractOne(text, move_choices, scorer=fuzz.WRatio, score_cutoff=88)
@@ -190,7 +213,7 @@ def to_firestore_json(parsed: dict, owner_id: str = "") -> dict:
         "item": parsed.get("item") or "",
         "moves": moves,
         "notes": "",
-        "shiny": None,
+        "shiny": bool(parsed.get("shiny", False)),
         "encounters": 0,
         "gender": "unknown",
         "form": "",
@@ -214,16 +237,18 @@ def to_firestore_json(parsed: dict, owner_id: str = "") -> dict:
 # Shared image parsing pipeline
 # -----------------------------
 def parse_one_image_pil(img: Image.Image, source_name: str = "") -> dict:
-    """
-    One image -> OCR -> parsed dict (same as /parse rows entries).
-    """
     img = img.convert("RGB")
     img_bgr = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
-    prep = preprocess_for_ui(img_bgr)
 
+    parsed = {}
+
+    # Detect shiny
+    parsed["shiny"] = detect_shiny(img_bgr)
+
+    prep = preprocess_for_ui(img_bgr)
     results = reader.readtext(prep, detail=1, paragraph=False)
 
-    parsed = parse_easyocr_results(results, conf_min=0.60)
+    parsed.update(parse_easyocr_results(results, conf_min=0.60))
     parsed = lookups.canonicalize(parsed)
     parsed["item"] = ascii_only(parsed.get("item", ""))
 
@@ -234,6 +259,7 @@ def parse_one_image_pil(img: Image.Image, source_name: str = "") -> dict:
         parsed["source_file"] = source_name
 
     return parsed
+
 
 
 # -----------------------------
@@ -342,6 +368,69 @@ def parse_crop_param(crop_raw: Optional[str]) -> Optional[Tuple[int, int, int, i
         raise ValueError("crop width/height must be > 0")
     return (x, y, w, h)
 
+def parsed_signature(parsed: dict) -> tuple:
+    """
+    Build a stable fingerprint of the extracted Pokémon info.
+    If this signature matches the previous accepted frame, we skip it.
+
+    Important:
+    - Do NOT include debug/source_file
+    - Normalize strings (lower/strip) so minor OCR formatting differences don't matter
+    - Keep numeric fields as ints
+    """
+    def norm_str(x) -> str:
+        return ascii_only(str(x or "")).strip().lower()
+
+    def norm_int(x) -> int:
+        try:
+            return int(x)
+        except Exception:
+            return 0
+
+    def norm_bool(x) -> int:
+        return 1 if x else 0
+
+
+    # Moves in order (your picker already produces stable canonical names)
+    moves = (
+        norm_str(parsed.get("move1")),
+        norm_str(parsed.get("move2")),
+        norm_str(parsed.get("move3")),
+        norm_str(parsed.get("move4")),
+    )
+
+    # Key identity + build info
+    sig = (
+        norm_str(parsed.get("pokemon")),
+        # norm_str(parsed.get("nickname")),
+        norm_int(parsed.get("level")),
+        norm_str(parsed.get("nature")),
+        norm_str(parsed.get("ability")),
+        norm_str(parsed.get("item")),
+
+        # EVs
+        norm_int(parsed.get("ev_hp")),
+        norm_int(parsed.get("ev_atk")),
+        norm_int(parsed.get("ev_def")),
+        norm_int(parsed.get("ev_spa")),
+        norm_int(parsed.get("ev_spd")),
+        norm_int(parsed.get("ev_spe")),
+
+        # IVs
+        norm_int(parsed.get("iv_hp")),
+        norm_int(parsed.get("iv_atk")),
+        norm_int(parsed.get("iv_def")),
+        norm_int(parsed.get("iv_spa")),
+        norm_int(parsed.get("iv_spd")),
+        norm_int(parsed.get("iv_spe")),
+
+        norm_bool(parsed.get("shiny")),
+
+        # Moves
+        moves,
+    )
+    return sig
+
 
 @app.get("/health")
 def health():
@@ -421,16 +510,28 @@ async def parse_video(
         unique_frames = keep_unique_frames(frames, dist_threshold=dist_threshold, compare_to=compare_to)
 
         rows = []
+        last_sig = None
+
         for idx, img in enumerate(unique_frames):
             parsed = parse_one_image_pil(img, source_name=f"{file.filename or 'video'}#frame{idx}")
+
+            sig = parsed_signature(parsed)
+            if last_sig is not None and sig == last_sig:
+                # OCR result is identical to previous accepted frame -> skip
+                continue
+
             rows.append(parsed)
+            last_sig = sig
+
 
         return {
             "ok": True,
             "frames_total": len(frames),
             "frames_unique": len(unique_frames),
             "rows": rows,
+            "rows_unique": len(rows),
         }
+
     finally:
         try:
             if "tmp_path" in locals() and tmp_path and os.path.exists(tmp_path):
@@ -467,16 +568,27 @@ async def parse_video_firestore(
         unique_frames = keep_unique_frames(frames, dist_threshold=dist_threshold, compare_to=compare_to)
 
         rows = []
+        last_sig = None
+
         for idx, img in enumerate(unique_frames):
             parsed = parse_one_image_pil(img, source_name=f"{file.filename or 'video'}#frame{idx}")
+
+            sig = parsed_signature(parsed)
+            if last_sig is not None and sig == last_sig:
+                continue
+
             rows.append(to_firestore_json(parsed, owner_id=ownerId))
+            last_sig = sig
+
 
         return {
             "ok": True,
             "frames_total": len(frames),
             "frames_unique": len(unique_frames),
             "rows": rows,
+            "rows_unique": len(rows),
         }
+
     finally:
         try:
             if "tmp_path" in locals() and tmp_path and os.path.exists(tmp_path):
