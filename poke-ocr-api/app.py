@@ -31,6 +31,8 @@ lookups = CanonicalLookups(
     monsters_path="data/monsters.json",
 )
 
+lookups.moves_lower = {m.lower() for m in lookups.moves}
+
 USE_GPU = os.getenv("EASYOCR_GPU", "0").lower() in ("1", "true", "yes", "on")
 reader = easyocr.Reader(["en"], gpu=USE_GPU)
 
@@ -108,7 +110,7 @@ def pick_moves(parsed: dict, move_choices: list[str]) -> tuple[str, str, str, st
                 continue
 
             ll = line.lower()
-            if ll in POKEMON_TYPES:
+            if ll in POKEMON_TYPES and ll not in lookups.moves_lower:
                 continue
             if any(k in ll for k in LABEL_SNIPPETS):
                 continue

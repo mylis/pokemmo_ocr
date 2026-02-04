@@ -12,6 +12,9 @@ This tool eliminates manual data entry and makes it easy to:
 Live Demo:
 https://mylis.github.io/pokemmo_ocr/
 
+Forum post:
+https://forums.pokemmo.com/index.php?/topic/196042-website-pok%C3%A9mmo-ocr-tool-quick-guide/#comment-2214251
+
 ---
 
 ## Features
