@@ -353,6 +353,23 @@ def keep_unique_frames(
 
     return kept
 
+def is_same_pokemon(a: dict, b: dict) -> bool:
+    if not a or not b:
+        return False
+
+    keys = [
+        "pokemon",
+        "level",
+        "nature",
+        "ability",
+        "item",
+        "ev_hp", "ev_atk", "ev_def", "ev_spa", "ev_spd", "ev_spe",
+        "iv_hp", "iv_atk", "iv_def", "iv_spa", "iv_spd", "iv_spe",
+        "move1", "move2", "move3", "move4",
+        "shiny",
+    ]
+
+    return all(a.get(k) == b.get(k) for k in keys)
 
 def parse_crop_param(crop_raw: Optional[str]) -> Optional[Tuple[int, int, int, int]]:
     """
@@ -523,6 +540,16 @@ async def parse_video(
             rows.append(parsed)
             last_sig = sig
 
+        deduped = []
+        last = None
+
+        for r in rows:
+            if last and is_same_pokemon(r, last):
+                continue
+            deduped.append(r)
+            last = r
+
+        rows = deduped
 
         return {
             "ok": True,
@@ -579,7 +606,17 @@ async def parse_video_firestore(
 
             rows.append(to_firestore_json(parsed, owner_id=ownerId))
             last_sig = sig
+       
+        deduped = []
+        last = None
 
+        for r in rows:
+            if last and is_same_pokemon(r, last):
+                continue
+            deduped.append(r)
+            last = r
+
+        rows = deduped
 
         return {
             "ok": True,

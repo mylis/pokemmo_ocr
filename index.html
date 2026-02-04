@@ -182,14 +182,16 @@
                 <!-- Links -->
                 <div class="flex items-center gap-5">
 
-                    <!-- Discord -->
-                    <a href="https://discord.com/channels/@me/305359533235109918" target="_blank" rel="noopener" class="inline-flex items-center gap-2 text-indigo-300 hover:text-indigo-200 transition" title="Open Discord profile">
-                        <!-- Clean Discord icon (simple mark, looks good small) -->
+                    <!-- Discord (copy to clipboard) -->
+                    <button id="copyDiscord" type="button" class="inline-flex items-center gap-2 text-indigo-300 hover:text-indigo-200 transition" title="Copy Discord username">
+
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 199" class="h-4 w-4 fill-current">
                             <path d="M216.9 16.5A208 208 0 00164.5 0a142 142 0 00-6.6 13.6 195 195 0 00-59.7 0A141 141 0 0091.6 0a208 208 0 00-52.4 16.5C7.8 62.6-0.8 107.6 2.5 151.9c20.7 15.4 40.7 24.8 60.4 31.0a153 153 0 0012.9-21.1 131 131 0 01-20.4-9.8c1.7-1.2 3.3-2.4 4.9-3.7 39.3 18.3 82.0 18.3 120.8 0 1.6 1.3 3.2 2.5 4.9 3.7a132 132 0 01-20.4 9.8c4.0 7.4 8.3 14.4 12.9 21.1 19.7-6.2 39.7-15.6 60.4-31.0 3.9-51.4-6.6-96.0-38.0-135.4zM85.5 135.6c-11.8 0-21.4-10.8-21.4-24.1 0-13.3 9.5-24.1 21.4-24.1 11.9 0 21.5 10.8 21.4 24.1 0 13.3-9.5 24.1-21.4 24.1zm85.0 0c-11.8 0-21.4-10.8-21.4-24.1 0-13.3 9.5-24.1 21.4-24.1 11.9 0 21.5 10.8 21.4 24.1 0 13.3-9.5 24.1-21.4 24.1z"/>
                         </svg>
-                        <span class="font-mono">.mylis</span>
-                    </a>
+
+                        <span id="discordLabel" class="font-mono">.mylis</span>
+                    </button>
+
 
 
                     <!-- PokéMMO Forums -->
@@ -280,7 +282,7 @@
                             </div>
 
                             <!-- Replace with your actual sample video file -->
-                            <video class="mx-auto max-h-[520px] w-auto max-w-full rounded-xl border border-white/10 bg-black/30" autoplay muted loop playsinline preload="auto" poster="./assets/example-video-poster.png">
+                            <video class="mx-auto max-h-[520px] w-auto max-w-full rounded-xl border border-white/10 bg-black/30" autoplay muted loop playsinline preload="auto" poster="./assets/example.png">
                             <source src="./assets/example.mp4" type="video/mp4" />
                             Your browser does not support the video tag.
                             </video>
@@ -415,6 +417,34 @@
             }
         })();
 
+        (function() {
+            var btn = document.getElementById("copyDiscord");
+            var label = document.getElementById("discordLabel");
+            if (!btn || !label) return;
+
+            var username = ".mylis";
+            var originalText = label.textContent;
+
+            btn.addEventListener("click", async function() {
+                try {
+                    await navigator.clipboard.writeText(username);
+
+                    label.textContent = "Copied!";
+                    btn.classList.add("text-emerald-300");
+
+                    setTimeout(function() {
+                        label.textContent = originalText;
+                        btn.classList.remove("text-emerald-300");
+                    }, 900);
+                } catch (e) {
+                    label.textContent = "Copy failed";
+                    setTimeout(function() {
+                        label.textContent = originalText;
+                    }, 900);
+                }
+            });
+        })();
+
         // -------------------------
         // Query string config
         // -------------------------
@@ -441,7 +471,7 @@
         var cancelRequested = false;
 
         var lastMode = "parse";
-        var apiBase = (getQueryParam("api") || "https://geographic-violations-forgot-his.trycloudflare.com").replace(/\/+$/, "");
+        var apiBase = (getQueryParam("api") || "https://system-hash-simpson-pickup.trycloudflare.com").replace(/\/+$/, "");
         var debugEnabled = String(getQueryParam("debug") || "").toLowerCase();
         debugEnabled = (debugEnabled === "1" || debugEnabled === "true" || debugEnabled === "yes" || debugEnabled === "on");
 
@@ -465,10 +495,17 @@
             if (!files.length) return;
 
             var t = selectionType(files);
-            if (t === "video") setStatus("1 video selected. Ready to process.");
-            else if (t === "images") setStatus(files.length + " screenshot(s) selected. Ready to process.");
-            else setStatus("Please select either screenshots OR one video (not both).");
+            if (t === "mixed") {
+                setStatus("Please upload either screenshots OR one video (not both).");
+                return;
+            }
+
+            // ✅ Auto-start processing
+            var mode = (lastMode === "firestore") ? "firestore" : "parse";
+            setStatus("Processing " + files.length + " file(s)…");
+            processFiles(files, mode);
         });
+
 
 
         btnFirestore.addEventListener("click", function() {
@@ -920,6 +957,60 @@
             }
         }
 
+        function formatDebug(r) {
+            if (!r.debug) return "";
+
+            var left = [];
+            var right = [];
+
+            // -------------------------
+            // Confidence (LEFT column)
+            // -------------------------
+            if (r.debug.conf) {
+                left.push("CONFIDENCE");
+                Object.keys(r.debug.conf).forEach(function(k) {
+                    var v = r.debug.conf[k];
+                    if (typeof v === "number" && v > 0) {
+                        left.push(
+                            k.padEnd(10, " ") + ": " + (v * 100).toFixed(1) + "%"
+                        );
+                    }
+                });
+            }
+
+            // -------------------------
+            // Move candidates (RIGHT column)
+            // -------------------------
+            if (Array.isArray(r.debug.move_candidates) && r.debug.move_candidates.length) {
+                right.push("MOVE CANDIDATES");
+                r.debug.move_candidates.forEach(function(mc) {
+                    var name = mc[0] || "";
+                    var conf = mc[1];
+                    right.push(
+                        name.padEnd(20, " ") + " " + (conf * 100).toFixed(1) + "%"
+                    );
+                });
+            }
+
+            // -------------------------
+            // Merge side-by-side
+            // -------------------------
+            var maxLines = Math.max(left.length, right.length);
+            var out = [];
+            var colWidth = 28; // left column width
+
+            for (var i = 0; i < maxLines; i++) {
+                var l = left[i] || "";
+                var r = right[i] || "";
+                out.push(
+                    l.padEnd(colWidth, " ") + "  " + r
+                );
+            }
+
+            return out.join("\n");
+        }
+
+
         // -------------------------
         // Desktop table renderer
         // -------------------------
@@ -937,7 +1028,7 @@
                     (r.iv_spe != null ? r.iv_spe : "");
 
                 var moves = [r.move1, r.move2, r.move3, r.move4].filter(Boolean).join("\n");
-                var debug = (r.debug && r.debug.raw_lines) ? r.debug.raw_lines.join("\n") : "";
+                var debug = formatDebug(r);
                 var pokepaste = buildPokePaste(r);
 
                 var pid = r.pokemon_id;
@@ -998,7 +1089,10 @@
                     '</div>' +
                     '</td>' +
 
-                    '<td class="px-3 py-3 align-top font-mono whitespace-pre-wrap text-slate-200/90 debug-col">' + escapeHtml(debug) + '</td>';
+                    '<td class="px-3 py-3 align-top font-mono whitespace-pre-wrap text-slate-200/90 debug-col min-w-[420px] w-[420px]">' +
+                    escapeHtml(debug) +
+                    '</td>';
+
 
                 tbody.appendChild(tr);
             });
@@ -1077,7 +1171,7 @@
                     '</div>';
 
                 if (debugEnabled) {
-                    var debug = (r.debug && r.debug.raw_lines) ? r.debug.raw_lines.join("\n") : "";
+                    var debug = formatDebug(r);
                     card.innerHTML +=
                         '<div class="mt-3 rounded-lg border border-white/10 bg-black/30 p-3">' +
                         '<div class="text-[11px] font-semibold text-slate-300">Debug</div>' +
