@@ -94,6 +94,11 @@
                 <button id="btnCsv" disabled class="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold hover:bg-white/10 disabled:opacity-50 disabled:hover:bg-white/5">
                 Download CSV
                 </button>
+
+                <button id="btnOts" class="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-slate-200 hover:bg-white/10" title="OTS mode: hide EVs/IVs/Nature from PokePaste output">
+                OTS: Off
+                </button>
+
             </div>
         </div>
         <div class="mt-3 flex flex-wrap items-center gap-3 text-sm text-slate-300">
@@ -140,7 +145,16 @@
         <div id="resultsWrap" class="mt-4 overflow-auto rounded-2xl border border-white/10 bg-white/5 shadow-lg">
             <div id="jsonWrap" class="hidden p-3 space-y-3"></div>
 
-            <div id="cards" class="hidden p-3 space-y-3"></div>
+            <div id="cardsWrap" class="hidden p-3 space-y-3">
+                <div id="mobileCopyAllBar" class="hidden">
+                    <button id="btnCopyAllPokePasteMobile" type="button" class="w-full rounded-xl border border-white/10 bg-indigo-500/15 px-4 py-2 text-xs font-semibold text-indigo-200 hover:bg-indigo-500/25 active:scale-[0.99]" title="Copy all PokePaste">
+                    Copy ALL PokePaste
+                    </button>
+                </div>
+
+                <div id="cards" class="space-y-3"></div>
+            </div>
+
 
             <table id="tbl" class="min-w-full text-left text-xs" style="display:none;">
                 <thead class="sticky top-0 bg-slate-900/90 backdrop-blur border-b border-white/10">
@@ -156,7 +170,16 @@
                         <th>EVs</th>
                         <th>IVs</th>
                         <th>Moves</th>
-                        <th>PokePaste</th>
+                        <th>
+                            <div class="flex items-center gap-2">
+                                <span>PokePaste</span>
+
+                                <button id="btnCopyAllPokePasteTable" type="button" class="hidden rounded-lg border border-white/10 bg-indigo-500/15 px-2 py-1 text-[11px] font-semibold text-indigo-200 hover:bg-indigo-500/25" title="Copy all PokePaste">
+                                Copy All
+                                </button>
+                            </div>
+                        </th>
+
                         <th class="debug-col">Debug</th>
                     </tr>
                 </thead>
@@ -651,7 +674,7 @@
             jsonWrap.innerHTML = "";
 
             tbl.style.display = "none";
-            cards.classList.add("hidden");
+            cardsWrap.classList.add("hidden");
             jsonWrap.classList.add("hidden");
             emptyState.style.display = "";
 
@@ -680,9 +703,6 @@
                     var fd = new FormData();
                     fd.append("file", video); // IMPORTANT: backend expects "file" not "files"
 
-                    // Optional: you can pass params via query string if you want
-                    // e.g. target_fps, dist_threshold, crop
-                    // var qs = "?target_fps=3&dist_threshold=6";
                     var qs = "";
 
                     var resp = await fetch(apiBase + endpoint + qs, {
@@ -792,7 +812,7 @@
         function renderFirestore(items) {
             // hide table/cards
             tbl.style.display = "none";
-            cards.classList.add("hidden");
+            cardsWrap.classList.add("hidden");
             emptyState.style.display = items.length ? "none" : "";
 
             jsonWrap.classList.remove("hidden");
@@ -942,7 +962,13 @@
         // -------------------------
         // Responsive view: table (desktop) vs cards (mobile)
         // -------------------------
+        var cardsWrap = document.getElementById("cardsWrap");
         var cards = document.getElementById("cards");
+
+        var btnCopyAllPokePasteTable = document.getElementById("btnCopyAllPokePasteTable");
+        var btnCopyAllPokePasteMobile = document.getElementById("btnCopyAllPokePasteMobile");
+        var mobileCopyAllBar = document.getElementById("mobileCopyAllBar");
+
 
         function isMobile() {
             return window.matchMedia("(max-width: 1270px)").matches;
@@ -966,7 +992,7 @@
 
             if (!rows || !rows.length) {
                 tbl.style.display = "none";
-                cards.classList.add("hidden");
+                cardsWrap.classList.add("hidden");
                 emptyState.style.display = "";
                 return;
             }
@@ -975,13 +1001,15 @@
 
             if (isMobile()) {
                 tbl.style.display = "none";
-                cards.classList.remove("hidden");
+                cardsWrap.classList.remove("hidden");
                 renderCards(rows);
             } else {
-                cards.classList.add("hidden");
+                cardsWrap.classList.add("hidden");
                 tbl.style.display = "";
                 renderTableRows(rows);
             }
+            updateCopyAllButtons(rows);
+
         }
 
         function formatDebug(r) {
@@ -1035,6 +1063,69 @@
             }
 
             return out.join("\n");
+        }
+
+        async function copyAllPokePaste() {
+            if (lastMode === "firestore") return; // explicitly not supported
+            if (!lastRows || !lastRows.length) return setStatus("No rows to copy.");
+
+            var blocks = lastRows.map(function(r) {
+                return buildPokePaste(r); // respects your OTS toggle because buildPokePaste does
+            });
+
+            var allText = blocks.join("\n\n");
+
+            try {
+                await navigator.clipboard.writeText(allText);
+                setStatus("Copied ALL PokePaste (" + lastRows.length + " Pokémon).");
+            } catch {
+                setStatus("Could not copy all PokePaste.");
+            }
+        }
+
+        if (btnCopyAllPokePasteTable) {
+            btnCopyAllPokePasteTable.addEventListener("click", copyAllPokePaste);
+        }
+        if (btnCopyAllPokePasteMobile) {
+            btnCopyAllPokePasteMobile.addEventListener("click", copyAllPokePaste);
+        }
+
+        function updateCopyAllButtons(rows) {
+            var show = (lastMode !== "firestore") && rows && rows.length;
+
+            // Desktop header button
+            if (btnCopyAllPokePasteTable) {
+                btnCopyAllPokePasteTable.classList.toggle("hidden", !show);
+            }
+
+            // Mobile bar
+            if (mobileCopyAllBar) {
+                mobileCopyAllBar.classList.toggle("hidden", !show || !isMobile());
+            }
+        }
+
+
+
+        var btnOts = document.getElementById("btnOts");
+        var otsEnabled = false;
+
+        function setOtsUi() {
+            if (!btnOts) return;
+            btnOts.textContent = otsEnabled ? "OTS: On" : "OTS: Off";
+            btnOts.classList.toggle("bg-emerald-500/15", otsEnabled);
+            btnOts.classList.toggle("text-emerald-200", otsEnabled);
+        }
+
+        if (btnOts) {
+            setOtsUi();
+            btnOts.addEventListener("click", function() {
+                otsEnabled = !otsEnabled;
+                setOtsUi();
+
+                // Re-render current results so the PokePaste previews update
+                if (lastMode === "firestore") renderFirestore(lastRows || []);
+                else renderRows(lastRows || []);
+            });
         }
 
 
@@ -1309,38 +1400,42 @@
 
 
         function buildPokePaste(r) {
-            var nick = (r.nickname && String(r.nickname).trim()) ? (r.nickname + " (" + (r.pokemon || "") + ")") : (r.pokemon || "");
+            var nick = (r.nickname && String(r.nickname).trim()) ?
+                (r.nickname + " (" + (r.pokemon || "") + ")") :
+                (r.pokemon || "");
+
             var item = (r.item && String(r.item).trim()) ? (" @ " + r.item) : "";
             var lines = [];
             lines.push((nick + item).trim());
+
             if (r.ability) lines.push("Ability: " + r.ability);
             if (r.level) lines.push("Level: " + r.level);
 
-            // ✅ Shiny flag (PokePaste standard)
-            if (r.shiny === true) {
-                lines.push("Shiny: Yes");
+            // Shiny flag
+            if (r.shiny === true) lines.push("Shiny: Yes");
+
+            // ✅ OTS mode: hide EVs / IVs / Nature
+            if (!otsEnabled) {
+                var evParts = [];
+                if (+r.ev_hp) evParts.push(r.ev_hp + " HP");
+                if (+r.ev_atk) evParts.push(r.ev_atk + " Atk");
+                if (+r.ev_def) evParts.push(r.ev_def + " Def");
+                if (+r.ev_spa) evParts.push(r.ev_spa + " SpA");
+                if (+r.ev_spd) evParts.push(r.ev_spd + " SpD");
+                if (+r.ev_spe) evParts.push(r.ev_spe + " Spe");
+                if (evParts.length) lines.push("EVs: " + evParts.join(" / "));
+
+                if (r.nature) lines.push(r.nature + " Nature");
+
+                var ivParts = [];
+                if (r.iv_hp != null && r.iv_hp !== "") ivParts.push(r.iv_hp + " HP");
+                if (r.iv_atk != null && r.iv_atk !== "") ivParts.push(r.iv_atk + " Atk");
+                if (r.iv_def != null && r.iv_def !== "") ivParts.push(r.iv_def + " Def");
+                if (r.iv_spa != null && r.iv_spa !== "") ivParts.push(r.iv_spa + " SpA");
+                if (r.iv_spd != null && r.iv_spd !== "") ivParts.push(r.iv_spd + " SpD");
+                if (r.iv_spe != null && r.iv_spe !== "") ivParts.push(r.iv_spe + " Spe");
+                if (ivParts.length) lines.push("IVs: " + ivParts.join(" / "));
             }
-
-
-            var evParts = [];
-            if (+r.ev_hp) evParts.push(r.ev_hp + " HP");
-            if (+r.ev_atk) evParts.push(r.ev_atk + " Atk");
-            if (+r.ev_def) evParts.push(r.ev_def + " Def");
-            if (+r.ev_spa) evParts.push(r.ev_spa + " SpA");
-            if (+r.ev_spd) evParts.push(r.ev_spd + " SpD");
-            if (+r.ev_spe) evParts.push(r.ev_spe + " Spe");
-            if (evParts.length) lines.push("EVs: " + evParts.join(" / "));
-
-            if (r.nature) lines.push(r.nature + " Nature");
-
-            var ivParts = [];
-            if (r.iv_hp != null && r.iv_hp !== "") ivParts.push(r.iv_hp + " HP");
-            if (r.iv_atk != null && r.iv_atk !== "") ivParts.push(r.iv_atk + " Atk");
-            if (r.iv_def != null && r.iv_def !== "") ivParts.push(r.iv_def + " Def");
-            if (r.iv_spa != null && r.iv_spa !== "") ivParts.push(r.iv_spa + " SpA");
-            if (r.iv_spd != null && r.iv_spd !== "") ivParts.push(r.iv_spd + " SpD");
-            if (r.iv_spe != null && r.iv_spe !== "") ivParts.push(r.iv_spe + " Spe");
-            if (ivParts.length) lines.push("IVs: " + ivParts.join(" / "));
 
             [r.move1, r.move2, r.move3, r.move4].filter(Boolean).forEach(function(m) {
                 lines.push("- " + m);
@@ -1348,6 +1443,7 @@
 
             return lines.join("\n");
         }
+
 
         btnCsv.addEventListener("click", function() {
             if (!lastRows.length) return;
