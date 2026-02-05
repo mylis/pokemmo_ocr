@@ -94,11 +94,6 @@
                 <button id="btnCsv" disabled class="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold hover:bg-white/10 disabled:opacity-50 disabled:hover:bg-white/5">
                 Download CSV
                 </button>
-
-                <button id="btnOts" class="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-slate-200 hover:bg-white/10" title="OTS mode: hide EVs/IVs/Nature from PokePaste output">
-                OTS: Off
-                </button>
-
             </div>
         </div>
         <div class="mt-3 flex flex-wrap items-center gap-3 text-sm text-slate-300">
@@ -147,10 +142,17 @@
 
             <div id="cardsWrap" class="hidden p-3 space-y-3">
                 <div id="mobileCopyAllBar" class="hidden">
-                    <button id="btnCopyAllPokePasteMobile" type="button" class="w-full rounded-xl border border-white/10 bg-indigo-500/15 px-4 py-2 text-xs font-semibold text-indigo-200 hover:bg-indigo-500/25 active:scale-[0.99]" title="Copy all PokePaste">
-                    Copy ALL PokePaste
-                    </button>
+                    <div class="flex flex-wrap gap-2">
+                        <button id="btnCopyAllPokePasteMobile" type="button" class="flex-1 rounded-xl border border-white/10 bg-indigo-500/15 px-4 py-2 text-xs font-semibold text-indigo-200 hover:bg-indigo-500/25 active:scale-[0.99]" title="Copy all PokePaste">
+                        Copy ALL PokePaste
+                        </button>
+
+                        <button id="btnOtsMobile" type="button" class="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold text-slate-200 hover:bg-white/10" title="OTS mode: hide EVs/IVs/Nature from PokePaste output">
+                        OTS: Off
+                        </button>
+                    </div>
                 </div>
+
 
                 <div id="cards" class="space-y-3"></div>
             </div>
@@ -177,6 +179,11 @@
                                 <button id="btnCopyAllPokePasteTable" type="button" class="hidden rounded-lg border border-white/10 bg-indigo-500/15 px-2 py-1 text-[11px] font-semibold text-indigo-200 hover:bg-indigo-500/25" title="Copy all PokePaste">
                                 Copy All
                                 </button>
+
+                                <button id="btnOtsTable" type="button" class="hidden rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-[11px] font-semibold text-slate-200 hover:bg-white/10" title="OTS mode: hide EVs/IVs/Nature from PokePaste output">
+                                OTS: Off
+                                </button>
+
                             </div>
                         </th>
 
@@ -1093,41 +1100,49 @@
         function updateCopyAllButtons(rows) {
             var show = (lastMode !== "firestore") && rows && rows.length;
 
-            // Desktop header button
-            if (btnCopyAllPokePasteTable) {
-                btnCopyAllPokePasteTable.classList.toggle("hidden", !show);
-            }
+            // Desktop header buttons
+            if (btnCopyAllPokePasteTable) btnCopyAllPokePasteTable.classList.toggle("hidden", !show);
+            if (btnOtsTable) btnOtsTable.classList.toggle("hidden", !show);
 
-            // Mobile bar
-            if (mobileCopyAllBar) {
-                mobileCopyAllBar.classList.toggle("hidden", !show || !isMobile());
-            }
+            // Mobile bar (only in mobile layout)
+            if (mobileCopyAllBar) mobileCopyAllBar.classList.toggle("hidden", !show || !isMobile());
+
+            // Make sure button labels match current state
+            setOtsUi();
         }
 
 
 
-        var btnOts = document.getElementById("btnOts");
+
+        var btnOtsTable = document.getElementById("btnOtsTable");
+        var btnOtsMobile = document.getElementById("btnOtsMobile");
         var otsEnabled = false;
 
+        function applyOtsButtonState(btn) {
+            if (!btn) return;
+            btn.textContent = otsEnabled ? "OTS: On" : "OTS: Off";
+            btn.classList.toggle("bg-emerald-500/15", otsEnabled);
+            btn.classList.toggle("text-emerald-200", otsEnabled);
+        }
+
         function setOtsUi() {
-            if (!btnOts) return;
-            btnOts.textContent = otsEnabled ? "OTS: On" : "OTS: Off";
-            btnOts.classList.toggle("bg-emerald-500/15", otsEnabled);
-            btnOts.classList.toggle("text-emerald-200", otsEnabled);
+            applyOtsButtonState(btnOtsTable);
+            applyOtsButtonState(btnOtsMobile);
         }
 
-        if (btnOts) {
+        function toggleOts() {
+            otsEnabled = !otsEnabled;
             setOtsUi();
-            btnOts.addEventListener("click", function() {
-                otsEnabled = !otsEnabled;
-                setOtsUi();
 
-                // Re-render current results so the PokePaste previews update
-                if (lastMode === "firestore") renderFirestore(lastRows || []);
-                else renderRows(lastRows || []);
-            });
+            // Re-render so previews update
+            if (lastMode === "firestore") renderFirestore(lastRows || []);
+            else renderRows(lastRows || []);
         }
 
+        if (btnOtsTable) btnOtsTable.addEventListener("click", toggleOts);
+        if (btnOtsMobile) btnOtsMobile.addEventListener("click", toggleOts);
+
+        setOtsUi();
 
         // -------------------------
         // Desktop table renderer
