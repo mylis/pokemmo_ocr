@@ -152,7 +152,7 @@ def build_pokepaste(row: dict, ots: bool) -> str:
     nickname = str(row.get("nickname") or "").strip()
     nature = str(row.get("nature") or "").strip()
     item = str(row.get("item") or "").strip()
-
+    ability = (row.get("ability") or "").strip()
     level = safe_int(row.get("level"), 0)
     shiny = bool(row.get("shiny", False))
 
