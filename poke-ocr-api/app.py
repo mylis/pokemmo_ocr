@@ -43,40 +43,68 @@ def ascii_only(s: str) -> str:
     s = "".join(ch for ch in str(s) if ord(ch) < 128)
     return s.strip()
 
+def _has_component(mask: np.ndarray, area_min: int, area_max: int) -> bool:
+    num, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
+    for i in range(1, num):
+        area = int(stats[i, cv2.CC_STAT_AREA])
+        if area_min <= area <= area_max:
+            return True
+    return False
+
+def detect_alpha_icon(img_bgr: np.ndarray) -> bool:
+    """
+    Red 'alpha' icon in the top-left.
+    Returns python bool (NOT numpy.bool_).
+    """
+    h, w = img_bgr.shape[:2]
+    roi = img_bgr[0:int(0.18*h), 0:int(0.22*w)]
+    hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
+
+    lower1 = np.array([0,   60,  60])
+    upper1 = np.array([10, 255, 255])
+    lower2 = np.array([170, 60,  60])
+    upper2 = np.array([180,255, 255])
+
+    mask = cv2.inRange(hsv, lower1, upper1) | cv2.inRange(hsv, lower2, upper2)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((3,3), np.uint8), iterations=1)
+
+    return bool(_has_component(mask, area_min=40, area_max=5000))
+
 def detect_shiny(img_bgr: np.ndarray) -> bool:
     """
-    Detects the shiny star icon in the top-left corner of the Pokémon summary UI.
-    Returns True if shiny star is present, else False.
+    Yellow star in the VERY top-left.
+    Fix: crop starts at y=0 so it still works when alpha is also present.
     """
+    h, w = img_bgr.shape[:2]
+    roi = img_bgr[0:int(0.16*h), 0:int(0.22*w)]
+    hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
 
-    h, w, _ = img_bgr.shape
-
-    # --- Crop region where shiny star appears ---
-    # Tuned for PokéMMO PC summary UI
-    # Adjust slightly if you change resolution/theme
-    crop = img_bgr[
-        int(0.02 * h):int(0.18 * h),   # top area
-        int(0.02 * w):int(0.18 * w)    # left area
-    ]
-
-    # Convert to HSV for robust color detection
-    hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
-
-    # Yellow/gold range (shiny star)
-    lower_yellow = np.array([18, 120, 150])
-    upper_yellow = np.array([40, 255, 255])
+    lower_yellow = np.array([12, 60, 120])
+    upper_yellow = np.array([45,255, 255])
 
     mask = cv2.inRange(hsv, lower_yellow, upper_yellow)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((3,3), np.uint8), iterations=1)
 
-    # Clean noise
-    kernel = np.ones((3, 3), np.uint8)
-    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+    return bool(_has_component(mask, area_min=30, area_max=3000))
 
-    # Count how much "yellow star" is present
-    yellow_pixels = cv2.countNonZero(mask)
+def detect_hidden_ability_diamond(img_bgr: np.ndarray) -> bool:
+    """
+    Cyan/teal diamond next to Ability (middle-right area).
+    Fix: ROI moved left + thresholds loosened a bit for small/anti-aliased icon.
+    """
+    h, w = img_bgr.shape[:2]
 
-    # Empirical threshold — very stable
-    return yellow_pixels > 50
+    # ROI around the Ability row (works on your provided screenshots)
+    roi = img_bgr[int(0.58*h):int(0.75*h), int(0.30*w):int(0.75*w)]
+    hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
+
+    lower = np.array([75, 40, 40])
+    upper = np.array([120,255,255])
+
+    mask = cv2.inRange(hsv, lower, upper)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((3,3), np.uint8), iterations=1)
+
+    return bool(_has_component(mask, area_min=20, area_max=800))
 
 
 def preprocess_for_ui(img_bgr: np.ndarray) -> np.ndarray:
@@ -222,7 +250,7 @@ def to_firestore_json(parsed: dict, owner_id: str = "") -> dict:
         "secretShiny": None,
         "encounterType": "",
         "ot": None,
-        "alpha": None,
+        "alpha": bool(parsed.get("alpha", False)),
         "addedAt": "",
         "pvp": None,
         "e4": None,
@@ -244,8 +272,10 @@ def parse_one_image_pil(img: Image.Image, source_name: str = "") -> dict:
 
     parsed = {}
 
-    # Detect shiny
-    parsed["shiny"] = detect_shiny(img_bgr)
+    # ✅ Detect icons (force Python bool)
+    parsed["shiny"] = bool(detect_shiny(img_bgr))
+    parsed["alpha"] = bool(detect_alpha_icon(img_bgr))
+    parsed["ha"] = bool(detect_hidden_ability_diamond(img_bgr))
 
     prep = preprocess_for_ui(img_bgr)
     results = reader.readtext(prep, detail=1, paragraph=False)
@@ -261,8 +291,6 @@ def parse_one_image_pil(img: Image.Image, source_name: str = "") -> dict:
         parsed["source_file"] = source_name
 
     return parsed
-
-
 
 # -----------------------------
 # Video -> frames -> unique
@@ -444,6 +472,8 @@ def parsed_signature(parsed: dict) -> tuple:
         norm_int(parsed.get("iv_spe")),
 
         norm_bool(parsed.get("shiny")),
+        norm_bool(parsed.get("alpha")),
+        norm_bool(parsed.get("ha")),
 
         # Moves
         moves,

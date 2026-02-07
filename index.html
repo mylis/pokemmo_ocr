@@ -1143,6 +1143,15 @@
 
         setOtsUi();
 
+        function badgeImg(src, title) {
+            return (
+                '<img src="' + src + '" ' +
+                'class="inline-block h-4 w-4 align-text-top ml-1 translate-y-[0.20em]" ' +
+                'title="' + title + '" ' +
+                'alt="' + title + '" />'
+            );
+        }
+
         // -------------------------
         // Desktop table renderer
         // -------------------------
@@ -1166,6 +1175,9 @@
                 var pid = r.pokemon_id;
                 var sprite = pokemonDbArtworkUrl(r.pokemon);
                 var shinyBadge = r.shiny ? ' ⭐' : '';
+                var alphaBadge = r.alpha ? badgeImg('./assets/alpha.png', 'Alpha Pokémon') : '';
+                var haBadge = r.ha ? ' 💎' : '';
+
                 var monCell =
                     '<td class="px-3 py-3 align-top">' +
                     '<div class="flex items-center gap-3">' +
@@ -1193,7 +1205,12 @@
                     monCell +
                     '<td class="px-3 py-3 align-top text-slate-200/90 debug-col">' + escapeHtml(r.source_file || "") + '</td>' +
                     '<td class="px-3 py-3 align-top font-semibold">' + escapeHtml(r.nickname || "") + '</td>' +
-                    '<td class="px-3 py-3 align-top">' + escapeHtml(r.pokemon || "") + shinyBadge + '</td>' +
+                    '<td class="px-3 py-3 align-top">' +
+                    escapeHtml(r.pokemon || "") +
+                    shinyBadge +
+                    alphaBadge +
+                    haBadge +
+                    '</td>' +
                     '<td class="px-3 py-3 align-top">' + escapeHtml(r.item || "") + '</td>' +
                     '<td class="px-3 py-3 align-top">' + escapeHtml(r.ability || "") + '</td>' +
                     '<td class="px-3 py-3 align-top">' + escapeHtml(String(r.level || "")) + '</td>' +
@@ -1250,6 +1267,8 @@
                 var pid = r.pokemon_id;
                 var sprite = pokemonDbArtworkUrl(r.pokemon);
                 var shinyBadge = r.shiny ? ' ⭐' : '';
+                var alphaBadge = r.alpha ? badgeImg('./assets/alpha.png', 'Alpha Pokémon') : '';
+                var haBadge = r.ha ? ' 💎' : '';
                 var card = document.createElement("div");
                 card.className = "rounded-2xl border border-white/10 bg-slate-900/40 p-4 shadow-lg";
 
@@ -1268,7 +1287,10 @@
                     ) +
                     '<div class="min-w-0">' +
                     '<div class="text-sm font-semibold text-slate-100 truncate">' +
-                    escapeHtml(r.pokemon || "") + shinyBadge +
+                    escapeHtml(r.pokemon || "") +
+                    shinyBadge +
+                    alphaBadge +
+                    haBadge +
                     '</div>' +
                     '<div class="text-xs text-slate-400 truncate">' +
                     escapeHtml(r.nickname || "") +
@@ -1463,7 +1485,7 @@
             if (!lastRows.length) return;
 
             var headers = [
-                "Nickname", "Pokemon", "Item", "Ability", "Level",
+                "Nickname", "Pokemon", "Item", "Ability", "Hidden Ability", "Shiny", "Level",
                 "EV HP", "EV Atk", "EV Def", "EV SpA", "EV SpD", "EV Spe",
                 "Nature",
                 "IV HP", "IV Atk", "IV Def", "IV SpA", "IV SpD", "IV Spe",
@@ -1480,6 +1502,8 @@
                     r.pokemon || "",
                     r.item || "",
                     r.ability || "",
+                    r.ha ? "Yes" : "No",
+                    r.shiny ? "Yes" : "No",
                     (r.level != null ? r.level : ""),
                     (r.ev_hp != null ? r.ev_hp : 0),
                     (r.ev_atk != null ? r.ev_atk : 0),
