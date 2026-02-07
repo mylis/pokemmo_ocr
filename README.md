@@ -1,6 +1,6 @@
 # PokéMMO Screenshot Exporter (OCR Tool)
 
-A web-based OCR tool that extracts Pokémon data from PokéMMO PC screenshots and converts it into structured, reusable formats.
+A web-based OCR tool for PokéMMO that extracts Pokémon data from screenshots or videos and exports it in multiple useful formats.
 
 This tool eliminates manual data entry and makes it easy to:
 
@@ -12,6 +12,9 @@ This tool eliminates manual data entry and makes it easy to:
 Live Demo:
 https://mylis.github.io/pokemmo_ocr/
 
+Invite the Discord bot:
+https://discord.com/oauth2/authorize?client_id=1469456127845466335&permissions=2147600384&integration_type=0&scope=bot+applications.commands
+
 Forum post:
 https://forums.pokemmo.com/index.php?/topic/196042-website-pok%C3%A9mmo-ocr-tool-quick-guide/#comment-2214251
 
@@ -19,35 +22,56 @@ https://forums.pokemmo.com/index.php?/topic/196042-website-pok%C3%A9mmo-ocr-tool
 
 ## Features
 
-- Upload or drag & drop PokéMMO screenshots
-- OCR-powered stat extraction using EasyOCR
-- Automatic detection of Pokémon species, nickname, level, nature, ability, item, EVs, IVs, and moves
-- Canonical correction of Pokémon, move, and item names
-- Responsive UI (table on desktop, cards on mobile)
+- Upload **multiple screenshots** or **one video**
+- Automatic frame sampling for videos
+- OCR tuned for PokéMMO’s default UI
+- Duplicate Pokémon detection (video & batch uploads)
+- Shiny detection
 - One-click PokéPaste copy
-- CSV export compatible with Google Sheets
-- Debug mode with raw OCR output
-- Firestore-ready JSON output
+- Export formats:
+  - PokéPaste
+  - CSV (spreadsheet-friendly)
+  - JSON (Firestore-ready)
+- No Pokémon data is stored server-side
 
 ---
 
-## Repository Structure
+## Supported Inputs
 
-```
-pokemmo-ocr/
-├─ poke-ocr-api/
-│  ├─ app.py
-│  ├─ parse.py
-│  ├─ lookup.py
-│  ├─ data/
-│  ├─ requirements.txt
-│  └─ run.bat
-│
-├─ index.html
-├─ assets/
-├─ .gitignore
-└─ README.md
-```
+### Screenshots
+- PNG / JPG / WebP
+- One Pokémon per screenshot
+- Default PokéMMO theme strongly recommended 
+
+### Video
+- MP4 / WebM / MOV
+- Pause ~1 second per Pokémon screen
+- Pokémon summary screen only (PC view)
+
+#### Input Guidelines
+- Use default PokéMMO theme
+- One Pokémon per screenshot
+- Stats, EVs, IVs, moves visible
+- No overlays or chat windows
+- No cropped or resized images 
+---
+
+## Output Formats
+
+### PokéPaste
+Compatible with PokéPaste / Showdown-style imports.
+
+Supports:
+- Full mode (EVs / IVs / Nature)
+- OTS (Open Team Sheet) mode
+
+### CSV
+Formatted to match common Pokémon tracking spreadsheets.
+
+### JSON
+Returned in two modes:
+- Raw OCR output
+- Firestore-friendly structured format (used by integrations)
 
 ---
 
@@ -230,13 +254,120 @@ Index.html
 
 ---
 
-## Screenshot Guidelines
+## Discord Bot (OCR via Slash Commands)
 
-- Use default PokéMMO theme
-- One Pokémon per screenshot
-- Stats, EVs, IVs, moves visible
-- No overlays or chat windows
-- No cropped or resized images  
+A standalone Discord bot that uses the OCR API and allows users to process screenshots **directly from Discord**.
+
+The bot runs in its **own Docker container** and can point to **any compatible API deployment** (yours or someone else’s).
+
+### Features
+
+- Slash commands only (no message scraping)
+- Accepts **image attachments** or **one video**
+- Supports **Full** and **OTS (Open Team Sheet)** modes
+- Returns:
+  - PokéPaste (`.txt`)
+  - Firestore-ready JSON (`ocr_json` only)
+- Interactive UI:
+  - Pokémon selector
+  - Toggle OTS mode
+  - Copy all / copy selected
+- No Pokémon data is stored
+
+### Commands
+
+#### `/ocr`
+Full interactive OCR run.
+
+- Upload screenshots or one video as attachments
+- Returns:
+  - PokéPaste
+  - JSON
+  - Interactive buttons & selector
+
+#### `/ocr_pokepaste`
+Returns **only PokéPaste** as a text file.
+
+- Supports Full / OTS mode
+- No JSON output
+
+#### `/ocr_json`
+Returns **only JSON** in the following Firestore-ready format  
+(fields not detected are left empty):
+
+```json
+{
+  "id": "",
+  "ownerId": "",
+  "species": "",
+  "nickname": "",
+  "level": 0,
+  "stats": { "hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0 },
+  "evs":   { "hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0 },
+  "ivs":   { "hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0 },
+  "nature": "",
+  "item": "",
+  "moves": [],
+  "notes": "",
+  "shiny": null,
+  "gender": "unknown",
+  "form": "",
+  "alpha": null
+}
+```
+---
+
+## Discord Bot Deployment (Docker)
+
+The Discord bot is deployed separately from the API.
+
+```
+Required Environment Variables
+DISCORD_TOKEN=your_discord_bot_token
+API_BASE=https://api.mylis.net
+DEFAULT_MODE=full   # or "ots"
+```
+
+Run with Docker
+```
+docker build -t pokemmo-ocr-discord .
+docker run -d \
+  --name pokemmo-ocr-discord \
+  --env-file .env \
+  pokemmo-ocr-discord
+```
+
+The bot automatically registers slash commands on startup.
+
+---
+
+## Discord Permissions
+
+When inviting the bot:
+
+### OAuth2 Scopes
+- bot
+- applications.commands
+### Bot Permissions
+- Send Messages
+- Embed Links
+- Attach Files
+- Read Message History
+
+No admin permissions required.
+
+--- 
+
+## Privacy & Data Handling
+
+This tool **does not log or store Pokémon data**.
+
+**Why?**
+- Pokémon teams are sensitive competitive information
+- Users should remain in full control of their data
+- Keeps hosting costs low and avoids data liability
+
+All uploads are processed in-memory and discarded immediately after processing.
 
 ---
 

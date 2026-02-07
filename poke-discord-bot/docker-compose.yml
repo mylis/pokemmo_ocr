@@ -1,0 +1,10 @@
+# docker-compose.yml
+services:
+  pokemmo-ocr-discord-bot:
+    build: .
+    container_name: pokemmo-ocr-discord-bot
+    restart: unless-stopped
+    environment:
+      DISCORD_TOKEN: "${DISCORD_TOKEN}"
+      API_BASE: "${API_BASE}"         # e.g. https://api.mylis.net or someone else's
+      DEFAULT_MODE: "${DEFAULT_MODE}" # optional: full|ots
