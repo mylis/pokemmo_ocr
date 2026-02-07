@@ -44,6 +44,11 @@ def safe_int(x, default=0) -> int:
     except Exception:
         return default
 
+def as_str(x) -> str:
+    if x is None:
+        return ""
+    return str(x).strip()
+
 def collect_attachments(*atts: Optional[discord.Attachment]) -> List[discord.Attachment]:
     return [a for a in atts if a is not None]
 
@@ -86,13 +91,18 @@ def normalize_pokemon_row(row: dict) -> dict:
         if mv:
             moves.append(mv)
 
-    # id: use what you have, otherwise empty
-    # (your /parse sometimes has pokemon_id; Firestore might have id)
-    pid_raw = row.get("id") or row.get("pokemon_id") or ""
-    pid = str(pid_raw).strip() if pid_raw is not None else ""
+    pid_raw = row.get("id")
+    if pid_raw in (None, "", 0, "0"):
+        pid_raw = row.get("pokemon_id")
+
+    pid = as_str(pid_raw)
+    if pid in ("0",):
+        pid = ""
+
 
 
     shiny = bool(row.get("shiny", False))
+    alpha = bool(row.get("alpha", False))
 
     # Everything else: leave empty defaults
     normalized = {
@@ -120,7 +130,7 @@ def normalize_pokemon_row(row: dict) -> dict:
         "secretShiny": False,
         "encounterType": "",
         "ot": False,
-        "alpha": False,
+        "alpha": alpha,
         "addedAt": "",
 
         "pvp": False,
