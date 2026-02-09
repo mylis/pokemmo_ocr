@@ -28,13 +28,8 @@
     <div class="w-[min(28rem,90vw)] rounded-2xl border border-white/10 bg-slate-900 px-6 py-5 shadow-2xl">
         <div class="flex items-center gap-4">
             <svg class="h-10 w-10 animate-spin text-indigo-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-        <circle class="opacity-25"
-                cx="12" cy="12" r="10"
-                stroke="currentColor"
-                stroke-width="4"></circle>
-        <path class="opacity-75"
-              fill="currentColor"
-              d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
       </svg>
 
             <div class="min-w-0">
@@ -55,8 +50,8 @@
         </div>
         <div class="mt-4 flex justify-end">
             <button id="btnCancel" class="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-slate-200 hover:bg-white/10">
-                Cancel
-            </button>
+        Cancel
+      </button>
         </div>
 
     </div>
@@ -84,27 +79,31 @@
           Upload screenshots / video
           <input id="fileInput" type="file" accept="image/*,video/*" multiple class="hidden" />
         </label>
-                <button id="btnProcess" class="rounded-xl bg-indigo-400 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-indigo-300 active:scale-[0.99]">
-                Load
-                </button>
+
+                <button id="btnClear" class="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold hover:bg-white/10">
+          Clear
+        </button>
+
                 <button id="btnFirestore" class="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold hover:bg-white/10 disabled:opacity-50 disabled:hover:bg-white/5">
-                Load (Firestore)
-                </button>
+          Load (Firestore)
+        </button>
 
                 <button id="btnCsv" disabled class="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold hover:bg-white/10 disabled:opacity-50 disabled:hover:bg-white/5">
-                Download CSV
-                </button>
+          Download CSV
+        </button>
             </div>
         </div>
+
         <div class="mt-3 flex flex-wrap items-center gap-3 text-sm text-slate-300">
             <button id="openExampleBtn" class="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 font-semibold text-indigo-300 hover:bg-white/10 hover:text-indigo-200">
-                📸 View examples
-            </button>
+        📸 View examples
+      </button>
 
             <span class="text-xs text-slate-400">
-                Tip: Use the <strong>default PokeMMO theme</strong> for best OCR accuracy
-            </span>
+        Tip: Use the <strong>default PokeMMO theme</strong> for best OCR accuracy
+      </span>
         </div>
+
         <!-- Dropzone -->
         <div id="drop" tabindex="0" class="mt-4 rounded-2xl border-2 border-dashed border-white/15 bg-white/5 p-6 text-center transition outline-none">
             <div class="text-sm font-semibold">
@@ -144,15 +143,14 @@
                 <div id="mobileCopyAllBar" class="hidden">
                     <div class="flex flex-wrap gap-2">
                         <button id="btnCopyAllPokePasteMobile" type="button" class="flex-1 rounded-xl border border-white/10 bg-indigo-500/15 px-4 py-2 text-xs font-semibold text-indigo-200 hover:bg-indigo-500/25 active:scale-[0.99]" title="Copy all PokePaste">
-                        Copy ALL PokePaste
-                        </button>
+              Copy ALL PokePaste
+            </button>
 
                         <button id="btnOtsMobile" type="button" class="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold text-slate-200 hover:bg-white/10" title="OTS mode: hide EVs/IVs/Nature from PokePaste output">
-                        OTS: Off
-                        </button>
+              OTS: Off
+            </button>
                     </div>
                 </div>
-
 
                 <div id="cards" class="space-y-3"></div>
             </div>
@@ -177,16 +175,14 @@
                                 <span>PokePaste</span>
 
                                 <button id="btnCopyAllPokePasteTable" type="button" class="hidden rounded-lg border border-white/10 bg-indigo-500/15 px-2 py-1 text-[11px] font-semibold text-indigo-200 hover:bg-indigo-500/25" title="Copy all PokePaste">
-                                Copy All
-                                </button>
+                  Copy All
+                </button>
 
                                 <button id="btnOtsTable" type="button" class="hidden rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-[11px] font-semibold text-slate-200 hover:bg-white/10" title="OTS mode: hide EVs/IVs/Nature from PokePaste output">
-                                OTS: Off
-                                </button>
-
+                  OTS: Off
+                </button>
                             </div>
                         </th>
-
                         <th class="debug-col">Debug</th>
                     </tr>
                 </thead>
@@ -199,6 +195,7 @@
         </div>
 
     </div>
+
     <footer class="mt-10 border-t border-white/10 bg-slate-950/80">
         <div class="mx-auto max-w-7xl px-4 py-6 text-center text-xs text-slate-400">
             <div class="flex flex-col items-center gap-3">
@@ -215,14 +212,12 @@
                     <!-- Discord (copy to clipboard) -->
                     <button id="copyDiscord" type="button" class="inline-flex items-center gap-2 text-indigo-300 hover:text-indigo-200 transition" title="Copy Discord username">
 
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 199" class="h-4 w-4 fill-current">
-                            <path d="M216.9 16.5A208 208 0 00164.5 0a142 142 0 00-6.6 13.6 195 195 0 00-59.7 0A141 141 0 0091.6 0a208 208 0 00-52.4 16.5C7.8 62.6-0.8 107.6 2.5 151.9c20.7 15.4 40.7 24.8 60.4 31.0a153 153 0 0012.9-21.1 131 131 0 01-20.4-9.8c1.7-1.2 3.3-2.4 4.9-3.7 39.3 18.3 82.0 18.3 120.8 0 1.6 1.3 3.2 2.5 4.9 3.7a132 132 0 01-20.4 9.8c4.0 7.4 8.3 14.4 12.9 21.1 19.7-6.2 39.7-15.6 60.4-31.0 3.9-51.4-6.6-96.0-38.0-135.4zM85.5 135.6c-11.8 0-21.4-10.8-21.4-24.1 0-13.3 9.5-24.1 21.4-24.1 11.9 0 21.5 10.8 21.4 24.1 0 13.3-9.5 24.1-21.4 24.1zm85.0 0c-11.8 0-21.4-10.8-21.4-24.1 0-13.3 9.5-24.1 21.4-24.1 11.9 0 21.5 10.8 21.4 24.1 0 13.3-9.5 24.1-21.4 24.1z"/>
-                        </svg>
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 199" class="h-4 w-4 fill-current">
+                <path d="M216.9 16.5A208 208 0 00164.5 0a142 142 0 00-6.6 13.6 195 195 0 00-59.7 0A141 141 0 0091.6 0a208 208 0 00-52.4 16.5C7.8 62.6-0.8 107.6 2.5 151.9c20.7 15.4 40.7 24.8 60.4 31.0a153 153 0 0012.9-21.1 131 131 0 01-20.4-9.8c1.7-1.2 3.3-2.4 4.9-3.7 39.3 18.3 82.0 18.3 120.8 0 1.6 1.3 3.2 2.5 4.9 3.7a132 132 0 01-20.4 9.8c4.0 7.4 8.3 14.4 12.9 21.1 19.7-6.2 39.7-15.6 60.4-31.0 3.9-51.4-6.6-96.0-38.0-135.4zM85.5 135.6c-11.8 0-21.4-10.8-21.4-24.1 0-13.3 9.5-24.1 21.4-24.1 11.9 0 21.5 10.8 21.4 24.1 0 13.3-9.5 24.1-21.4 24.1zm85.0 0c-11.8 0-21.4-10.8-21.4-24.1 0-13.3 9.5-24.1 21.4-24.1 11.9 0 21.5 10.8 21.4 24.1 0 13.3-9.5 24.1-21.4 24.1z"/>
+            </svg>
 
-                        <span id="discordLabel" class="font-mono">.mylis</span>
-                    </button>
-
-
+            <span id="discordLabel" class="font-mono">.mylis</span>
+          </button>
 
                     <!-- PokéMMO Forums -->
                     <a href="https://forums.pokemmo.com/index.php?/profile/558365-mylis/" target="_blank" rel="noopener" title="PokéMMO Forums profile" class="inline-flex items-center gap-1 text-slate-400 hover:text-slate-200 transition">
@@ -232,8 +227,9 @@
                     <!-- GitHub -->
                     <a href="https://github.com/mylis/pokemmo_ocr" target="_blank" rel="noopener" class="inline-flex items-center gap-1 text-slate-400 hover:text-slate-200 transition">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="h-4 w-4 fill-current">
-                            <path d="M12 .5C5.7.5.5 5.7.5 12c0 5.1 3.3 9.4 7.9 10.9.6.1.8-.2.8-.5v-2c-3.2.7-3.9-1.4-3.9-1.4-.5-1.2-1.2-1.6-1.2-1.6-1-.7.1-.7.1-.7 1.1.1 1.7 1.2 1.7 1.2 1 .1.6 1.7 2.6 1.7.2-.7.4-1.1.7-1.4-2.5-.3-5.1-1.2-5.1-5.6 0-1.2.4-2.1 1.1-2.9-.1-.3-.5-1.4.1-2.8 0 0 .9-.3 2.9 1.1.8-.2 1.6-.3 2.4-.3s1.6.1 2.4.3c2-1.4 2.9-1.1 2.9-1.1.6 1.4.2 2.5.1 2.8.7.8 1.1 1.7 1.1 2.9 0 4.4-2.6 5.3-5.1 5.6.4.3.8 1 .8 2v3c0 .3.2.6.8.5 4.6-1.5 7.9-5.8 7.9-10.9C23.5 5.7 18.3.5 12 .5z"/>
-                        </svg> GitHub
+              <path
+                d="M12 .5C5.7.5.5 5.7.5 12c0 5.1 3.3 9.4 7.9 10.9.6.1.8-.2.8-.5v-2c-3.2.7-3.9-1.4-3.9-1.4-.5-1.2-1.2-1.6-1.2-1.6-1-.7.1-.7.1-.7 1.1.1 1.7 1.2 1.7 1.2 1 .1.6 1.7 2.6 1.7.2-.7.4-1.1.7-1.4-2.5-.3-5.1-1.2-5.1-5.6 0-1.2.4-2.1 1.1-2.9-.1-.3-.5-1.4.1-2.8 0 0 .9-.3 2.9 1.1.8-.2 1.6-.3 2.4-.3s1.6.1 2.4.3c2-1.4 2.9-1.1 2.9-1.1.6 1.4.2 2.5.1 2.8.7.8 1.1 1.7 1.1 2.9 0 4.4-2.6 5.3-5.1 5.6.4.3.8 1 .8 2v3c0 .3.2.6.8.5 4.6-1.5 7.9-5.8 7.9-10.9C23.5 5.7 18.3.5 12 .5z" />
+            </svg> GitHub
                     </a>
 
                 </div>
@@ -246,7 +242,6 @@
             </div>
         </div>
     </footer>
-
 
 
     <!-- Example Modal -->
@@ -264,8 +259,8 @@
                     </div>
                 </div>
                 <button id="closeExampleBtn" class="rounded-lg px-2 py-1 text-slate-400 hover:bg-white/10 hover:text-white">
-        ✕
-      </button>
+          ✕
+        </button>
             </div>
 
             <!-- Content -->
@@ -273,11 +268,11 @@
                 <!-- Tabs -->
                 <div class="flex flex-wrap items-center gap-2">
                     <button id="tabShot" class="exampleTab rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold text-slate-200 hover:bg-white/10">
-          📸 Screenshot example
-        </button>
+            📸 Screenshot example
+          </button>
                     <button id="tabVid" class="exampleTab rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold text-slate-200 hover:bg-white/10">
-          🎞️ Video example
-        </button>
+            🎞️ Video example
+          </button>
 
                     <div class="lg:ml-auto text-[11px] text-slate-400">
                         Tip: you can also <strong>paste</strong> screenshots from clipboard (<span class="font-mono">Ctrl/Cmd+V</span>)
@@ -312,9 +307,9 @@
 
                             <!-- Replace with your actual sample video file -->
                             <video class="mx-auto max-h-[60vh] w-auto max-w-full rounded-xl border border-white/10 bg-black/30" autoplay muted loop playsinline preload="auto" poster="./assets/example.png">
-                            <source src="./assets/example.mp4" type="video/mp4" />
-                            Your browser does not support the video tag.
-                            </video>
+                <source src="./assets/example.mp4" type="video/mp4" />
+                Your browser does not support the video tag.
+              </video>
 
                             <div class="text-[11px] text-slate-400">
                                 The tool samples frames and keeps only <strong>unique Pokémon screens</strong> (duplicates are skipped).
@@ -322,84 +317,59 @@
                         </div>
                     </div>
 
-                    <!-- Hints panel (fixed typography / no weird wrapping) -->
+                    <!-- Hints panel -->
                     <div class="rounded-2xl border border-white/10 bg-black/20 p-4">
                         <div class="text-xs font-semibold text-slate-200">Hints for best OCR</div>
 
-                        <!-- Use a responsive 2-column layout only for the cards, not for the text inside -->
                         <div class="mt-3 grid gap-4 lg:grid-cols-2">
-                            <!-- Do -->
                             <div class="rounded-xl border border-emerald-400/20 bg-emerald-500/5 p-3">
                                 <div class="flex items-center gap-2 text-[11px] font-semibold text-emerald-200">
                                     ✅ Do this
                                 </div>
 
                                 <ul class="mt-2 space-y-2 text-xs leading-snug text-slate-200">
-                                    <li class="flex items-start gap-2">
-                                        <span class="mt-[2px] text-emerald-300">✓</span>
-                                        <span>Use the <strong>default PokéMMO theme</strong></span>
-                                    </li>
-                                    <li class="flex items-start gap-2">
-                                        <span class="mt-[2px] text-emerald-300">✓</span>
-                                        <span>Keep <strong>one Pokémon per screenshot</strong></span>
-                                    </li>
-                                    <li class="flex items-start gap-2">
-                                        <span class="mt-[2px] text-emerald-300">✓</span>
-                                        <span>Ensure <strong>Level / Nature / Item / Ability</strong> are visible</span>
-                                    </li>
-                                    <li class="flex items-start gap-2">
-                                        <span class="mt-[2px] text-emerald-300">✓</span>
-                                        <span>Make sure <strong>EVs + IVs + Moves</strong> are fully on-screen</span>
-                                    </li>
-                                    <li class="flex items-start gap-2">
-                                        <span class="mt-[2px] text-emerald-300">✓</span>
-                                        <span>Prefer <strong>consistent resolution</strong> across uploads</span>
-                                    </li>
+                                    <li class="flex items-start gap-2"><span class="mt-[2px] text-emerald-300">✓</span><span>Use the
+                      <strong>default PokéMMO theme</strong></span></li>
+                                    <li class="flex items-start gap-2"><span class="mt-[2px] text-emerald-300">✓</span><span>Keep
+                      <strong>one Pokémon per screenshot</strong></span></li>
+                                    <li class="flex items-start gap-2"><span class="mt-[2px] text-emerald-300">✓</span><span>Ensure
+                      <strong>Level / Nature / Item / Ability</strong> are visible</span></li>
+                                    <li class="flex items-start gap-2"><span class="mt-[2px] text-emerald-300">✓</span><span>Make sure
+                      <strong>EVs + IVs + Moves</strong> are fully on-screen</span></li>
+                                    <li class="flex items-start gap-2"><span class="mt-[2px] text-emerald-300">✓</span><span>Prefer
+                      <strong>consistent resolution</strong> across uploads</span></li>
                                 </ul>
                             </div>
 
-                            <!-- Don't -->
                             <div class="rounded-xl border border-rose-400/20 bg-rose-500/5 p-3">
                                 <div class="flex items-center gap-2 text-[11px] font-semibold text-rose-200">
                                     ❌ Avoid this
                                 </div>
 
                                 <ul class="mt-2 space-y-2 text-xs leading-snug text-slate-200">
-                                    <li class="flex items-start gap-2">
-                                        <span class="mt-[2px] text-rose-300">✕</span>
-                                        <span>Don’t include <strong>chat windows</strong> or UI overlays</span>
+                                    <li class="flex items-start gap-2"><span class="mt-[2px] text-rose-300">✕</span><span>Don’t include
+                      <strong>chat windows</strong> or UI overlays</span></li>
+                                    <li class="flex items-start gap-2"><span class="mt-[2px] text-rose-300">✕</span><span>Don’t crop too
+                      tightly <span class="text-slate-400">(leave UI context)</span></span>
                                     </li>
-                                    <li class="flex items-start gap-2">
-                                        <span class="mt-[2px] text-rose-300">✕</span>
-                                        <span>Don’t crop too tightly <span class="text-slate-400">(leave UI context)</span></span>
+                                    <li class="flex items-start gap-2"><span class="mt-[2px] text-rose-300">✕</span><span>Don’t upload
+                      <strong>ZIP/PDF</strong> <span class="text-slate-400">(images/video only)</span></span>
                                     </li>
-                                    <li class="flex items-start gap-2">
-                                        <span class="mt-[2px] text-rose-300">✕</span>
-                                        <span>Don’t upload <strong>ZIP/PDF</strong> <span class="text-slate-400">(images/video only)</span></span>
-                                    </li>
-                                    <li class="flex items-start gap-2">
-                                        <span class="mt-[2px] text-rose-300">✕</span>
-                                        <span>Don’t upload <strong>screenshots + video together</strong></span>
-                                    </li>
+                                    <li class="flex items-start gap-2"><span class="mt-[2px] text-rose-300">✕</span><span>Don’t upload
+                      <strong>screenshots + video together</strong></span></li>
                                 </ul>
                             </div>
                         </div>
 
-                        <!-- Video-specific tips -->
                         <div class="mt-4 rounded-xl border border-white/10 bg-white/5 p-3">
                             <div class="text-[11px] font-semibold text-slate-200">🎞️ Video tips</div>
                             <ul class="mt-2 space-y-2 text-xs leading-snug text-slate-200">
-                                <li class="flex items-start gap-2">
-                                    <span class="mt-[2px] text-indigo-300">•</span>
-                                    <span>Pause ~ <strong>1 second</strong> on each Pokémon screen</span>
-                                </li>
-                                <li class="flex items-start gap-2">
-                                    <span class="mt-[2px] text-indigo-300">•</span>
-                                    <span>Record only the <strong>Pokémon summary</strong> from the PC menu</span>
-                                </li>
-                                <li class="flex items-start gap-2">
-                                    <span class="mt-[2px] text-indigo-300">•</span>
-                                    <span>Record at a readable resolution <span class="text-slate-400">(720p+ recommended)</span></span>
+                                <li class="flex items-start gap-2"><span class="mt-[2px] text-indigo-300">•</span><span>Pause ~
+                    <strong>1 second</strong> on each Pokémon screen</span></li>
+                                <li class="flex items-start gap-2"><span class="mt-[2px] text-indigo-300">•</span><span>Record only the
+                    <strong>Pokémon summary</strong> from the PC menu</span></li>
+                                <li class="flex items-start gap-2"><span class="mt-[2px] text-indigo-300">•</span><span>Record at a
+                    readable resolution <span class="text-slate-400">(720p+ recommended)</span></span>
                                 </li>
                             </ul>
                         </div>
@@ -440,8 +410,6 @@
                 tabVid.addEventListener("click", function() {
                     setTab("vid");
                 });
-
-                // default tab
                 setTab("shot");
             }
         })();
@@ -488,7 +456,7 @@
         var fileInput = document.getElementById("fileInput");
         var drop = document.getElementById("drop");
         var statusEl = document.getElementById("status");
-        var btnProcess = document.getElementById("btnProcess");
+        var btnClear = document.getElementById("btnClear");
         var btnCsv = document.getElementById("btnCsv");
         var tbl = document.getElementById("tbl");
         var tbody = document.getElementById("tbody");
@@ -499,24 +467,86 @@
         var loadingOverlay = document.getElementById("loadingOverlay");
         var cancelRequested = false;
 
+        // NEW: keep data between loads until cleared/closed
+        var store = {
+            parse: [],
+            firestore: []
+        };
         var lastMode = "parse";
+        var _rowSeq = 0;
+
+        function ensureRowIds(rows) {
+            rows.forEach(function(r) {
+                if (!r) return;
+                if (!r._rid) r._rid = "r" + (++_rowSeq);
+            });
+        }
+
+        function getActiveRows(mode) {
+            return (mode === "firestore") ? store.firestore : store.parse;
+        }
+
+        function setActiveRows(mode, rows) {
+            if (mode === "firestore") store.firestore = rows;
+            else store.parse = rows;
+        }
+
+        function allRowsCount() {
+            return store.parse.length + store.firestore.length;
+        }
+
         var apiBase = (getQueryParam("api") || "https://api.mylis.net").replace(/\/+$/, "");
         var debugEnabled = String(getQueryParam("debug") || "").toLowerCase();
         debugEnabled = (debugEnabled === "1" || debugEnabled === "true" || debugEnabled === "yes" || debugEnabled === "on");
 
-        // var apiHint = document.getElementById("apiHint");
-        // apiHint.textContent = "Using API: " + apiBase + (debugEnabled ? " (debug on)" : "");
-
         if (debugEnabled) resultsWrap.classList.add("show-debug");
-
         if (!debugEnabled) {
             btnFirestore.style.display = "none";
         }
 
-        var lastRows = [];
-
         function setStatus(msg) {
             statusEl.textContent = msg || "";
+        }
+
+        // Clear button: resets everything
+        function clearAll() {
+            store.parse = [];
+            store.firestore = [];
+
+            tbody.innerHTML = "";
+            cards.innerHTML = "";
+            jsonWrap.innerHTML = "";
+
+            tbl.style.display = "none";
+            cardsWrap.classList.add("hidden");
+            jsonWrap.classList.add("hidden");
+            emptyState.style.display = "";
+
+            btnCsv.disabled = true;
+            setStatus("Cleared.");
+        }
+
+        btnClear.addEventListener("click", clearAll);
+
+        // Confirmation + delete logic
+        function deleteRowById(mode, rid) {
+            // confirm
+            var ok = window.confirm("Are you sure you want to delete this pokemon?");
+            if (!ok) return;
+
+            var rows = getActiveRows(mode);
+            rows = rows.filter(function(r) {
+                return r && r._rid !== rid;
+            });
+            setActiveRows(mode, rows);
+
+            if (mode === "firestore") renderFirestore(rows);
+            else renderRows(rows);
+
+            btnCsv.disabled = (mode === "firestore") || !(rows && rows.length);
+
+            if (!rows.length && allRowsCount() === 0) setStatus("No results yet.");
+            else setStatus("Pokemon deleted.");
         }
 
         fileInput.addEventListener("change", function() {
@@ -529,13 +559,11 @@
                 return;
             }
 
-            // ✅ Auto-start processing
+            // Auto-start processing; keep user's last mode
             var mode = (lastMode === "firestore") ? "firestore" : "parse";
             setStatus("Processing " + files.length + " file(s)…");
             processFiles(files, mode);
         });
-
-
 
         btnFirestore.addEventListener("click", function() {
             var files = Array.from(fileInput.files || []);
@@ -543,82 +571,48 @@
             processFiles(files, "firestore");
         });
 
-
         function filesFromDrop(e) {
             var dt = e.dataTransfer;
             if (!dt || !dt.files) return [];
             var arr = Array.from(dt.files);
 
-            // allow images + video
             return arr.filter(function(f) {
                 return f.type && (f.type.indexOf("image/") === 0 || f.type.indexOf("video/") === 0);
             });
         }
 
-        // -------------------------
         // Clipboard paste support
-        // -------------------------
         function filesFromClipboardEvent(e) {
             var cd = e.clipboardData;
             if (!cd || !cd.items) return [];
 
             var files = [];
-
             for (var i = 0; i < cd.items.length; i++) {
                 var it = cd.items[i];
-
-                // Prefer file-kind items (images are usually here)
                 if (it.kind === "file") {
                     var f = it.getAsFile();
                     if (f) files.push(f);
                     continue;
                 }
-
-                // Some browsers expose images as "image/png" etc but still kind=file;
-                // nothing else to do here.
             }
 
-            // Filter to image/video only
             files = files.filter(function(f) {
                 return f && f.type && (f.type.indexOf("image/") === 0 || f.type.indexOf("video/") === 0);
             });
 
-            // If the clipboard includes multiple items, keep as-is.
             return files;
         }
 
-        // Where to listen:
-        // - document: allows paste anywhere
-        // - drop zone: optional focus target
         document.addEventListener("paste", function(e) {
             var files = filesFromClipboardEvent(e);
             if (!files.length) return;
 
-            // Prevent pasting the image into some focused element (if any)
             e.preventDefault();
-
-            // Use last selected mode:
-            // - if user last clicked Firestore, paste goes Firestore
-            // - otherwise normal parse
             var mode = (lastMode === "firestore") ? "firestore" : "parse";
 
             setStatus("Pasted " + files.length + " item(s) from clipboard. Processing…");
             processFiles(files, mode);
         });
-
-        // Optional: allow focusing the drop area so users can click it then paste
-        drop.setAttribute("tabindex", "0");
-        drop.addEventListener("click", function() {
-            drop.focus();
-        });
-        drop.addEventListener("keydown", function(e) {
-            // Nice UX: Enter/Space opens file picker
-            if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                fileInput.click();
-            }
-        });
-
 
         // Dropzone styling
         drop.addEventListener("dragover", function(e) {
@@ -635,13 +629,11 @@
             drop.classList.remove("border-emerald-300/60");
             drop.classList.remove("bg-emerald-400/10");
             var files = filesFromDrop(e);
-            if (files.length) processFiles(files);
-        });
-
-        btnProcess.addEventListener("click", function() {
-            var files = Array.from(fileInput.files || []);
-            if (!files.length) return setStatus("Select files first.");
-            processFiles(files, "parse");
+            if (files.length) {
+                var t = selectionType(files);
+                if (t === "mixed") return setStatus("Please upload either screenshots OR one video, not both at once.");
+                processFiles(files, (lastMode === "firestore") ? "firestore" : "parse");
+            }
         });
 
         function isVideoFile(f) {
@@ -653,7 +645,6 @@
         }
 
         function selectionType(files) {
-            // returns: "images" | "video" | "mixed" | "empty"
             if (!files || !files.length) return "empty";
             var hasVid = files.some(isVideoFile);
             var hasImg = files.some(isImageFile);
@@ -662,92 +653,69 @@
             return "images";
         }
 
-
         async function processFiles(files, mode) {
             if (!files || !files.length) return;
 
-            // Decide type
             var selType = selectionType(files);
             if (selType === "mixed") {
                 setStatus("Please upload either screenshots OR one video, not both at once.");
                 return;
             }
 
-            // start fresh
-            lastRows = [];
-            tbody.innerHTML = "";
-            cards.innerHTML = "";
-            jsonWrap.innerHTML = "";
-
-            tbl.style.display = "none";
-            cardsWrap.classList.add("hidden");
-            jsonWrap.classList.add("hidden");
-            emptyState.style.display = "";
-
+            // IMPORTANT: do NOT wipe previous results; we append.
             lastMode = mode;
-
             cancelRequested = false;
 
             // Disable buttons during processing
-            btnProcess.disabled = true;
+            btnClear.disabled = true;
             btnFirestore.disabled = true;
             btnCsv.disabled = true;
 
             try {
                 if (selType === "video") {
-                    // --- VIDEO PATH ---
                     var video = files[0];
-
-                    // endpoints
                     var endpoint = (mode === "firestore") ? "/parse_video_firestore" : "/parse_video";
                     var titleBase = (mode === "firestore") ? "Processing video (Firestore)…" : "Processing video…";
 
-                    // UI: single "unit" of work
                     showLoadingWithProgress(titleBase, 0, 1);
                     setStatus(titleBase + " " + video.name);
 
                     var fd = new FormData();
-                    fd.append("file", video); // IMPORTANT: backend expects "file" not "files"
+                    fd.append("file", video);
 
-                    var qs = "";
-
-                    var resp = await fetch(apiBase + endpoint + qs, {
+                    var resp = await fetch(apiBase + endpoint, {
                         method: "POST",
                         body: fd
                     });
-
                     if (!resp.ok) {
                         var txt = await resp.text();
                         throw new Error("Failed on " + video.name + ": " + resp.status + " " + txt);
                     }
 
                     var data = await resp.json();
-
-                    // backend returns { ok, frames_total, frames_unique, rows }
                     var rows = (data && Array.isArray(data.rows)) ? data.rows : [];
 
-                    // show extra helpful status
+                    ensureRowIds(rows);
+
+                    var active = getActiveRows(mode).concat(rows);
+                    setActiveRows(mode, active);
+
                     if (data && (typeof data.frames_total === "number") && (typeof data.frames_unique === "number")) {
                         setStatus("Video done. Frames: " + data.frames_unique + " unique / " + data.frames_total + " sampled.");
                     } else {
                         setStatus("Video done.");
                     }
 
-                    lastRows = lastRows.concat(rows);
-
-                    if (mode === "firestore") {
-                        renderFirestore(lastRows);
-                    } else renderRows(lastRows);
+                    if (mode === "firestore") renderFirestore(active);
+                    else renderRows(active);
 
                     showLoadingWithProgress(titleBase, 1, 1);
 
-                    // CSV only makes sense for /parse output
-                    btnCsv.disabled = (mode === "firestore") || (lastRows.length === 0);
-
-                    return; // end video path
+                    btnCsv.disabled = (mode === "firestore") || (active.length === 0);
+                    return;
                 }
 
-                // --- IMAGES PATH (original behavior) ---
+                // Images path
                 var endpoint = (mode === "firestore") ? "/parse_firestore" : "/parse";
                 var titleBase = (mode === "firestore") ? "Processing (Firestore)…" : "Processing screenshots…";
 
@@ -764,42 +732,38 @@
                     showLoadingWithProgress((mode === "firestore" ? "Firestore: " : "Processing: ") + f.name, done, total);
 
                     var fd = new FormData();
-                    fd.append("files", f); // one file at a time
+                    fd.append("files", f);
 
                     var resp = await fetch(apiBase + endpoint, {
                         method: "POST",
                         body: fd
                     });
-
                     if (!resp.ok) {
                         var txt = await resp.text();
                         throw new Error("Failed on " + f.name + ": " + resp.status + " " + txt);
                     }
 
                     var data = await resp.json();
-
-                    // Firestore endpoint returns { ok, rows }, not items.
                     var newRows = (data && Array.isArray(data.rows)) ? data.rows : [];
 
-                    lastRows = lastRows.concat(newRows);
+                    ensureRowIds(newRows);
 
-                    if (mode === "firestore") {
-                        renderFirestore(lastRows);
-                    } else renderRows(lastRows);
+                    var active = getActiveRows(mode).concat(newRows);
+                    setActiveRows(mode, active);
+
+                    if (mode === "firestore") renderFirestore(active);
+                    else renderRows(active);
 
                     done++;
                     showLoadingWithProgress(titleBase, done, total);
                     setStatus("Processed " + done + " / " + total + "…");
                 }
 
-                if (cancelRequested) {
-                    setStatus("Cancelled. Processed " + done + " / " + total + " file(s).");
-                } else {
-                    setStatus("Done. Processed " + done + " / " + total + " file(s).");
-                }
+                if (cancelRequested) setStatus("Cancelled. Processed " + done + " / " + total + " file(s).");
+                else setStatus("Done. Processed " + done + " / " + total + " file(s).");
 
-                // CSV only makes sense for /parse output
-                btnCsv.disabled = (mode === "firestore") || (lastRows.length === 0);
+                var active = getActiveRows(mode);
+                btnCsv.disabled = (mode === "firestore") || (active.length === 0);
 
             } catch (err) {
                 console.error(err);
@@ -807,16 +771,16 @@
             } finally {
                 hideLoading();
 
-                btnProcess.disabled = false;
+                btnClear.disabled = false;
                 btnFirestore.disabled = false;
 
+                var active = getActiveRows(mode);
                 if (mode === "firestore") btnCsv.disabled = true;
-                else btnCsv.disabled = !(lastRows && lastRows.length);
+                else btnCsv.disabled = !(active && active.length);
             }
         }
 
         function renderFirestore(items) {
-            // hide table/cards
             tbl.style.display = "none";
             cardsWrap.classList.add("hidden");
             emptyState.style.display = items.length ? "none" : "";
@@ -847,7 +811,6 @@
                 '</div>';
 
             jsonWrap.appendChild(bundleCard);
-
 
             items.forEach(function(obj, idx) {
                 var species = (obj && obj.species) ? obj.species : "";
@@ -895,20 +858,12 @@
             }
         });
 
-
         function escapeHtml(s) {
-            return String(s)
-                .replace(/&/g, "&amp;")
-                .replace(/</g, "&lt;")
-                .replace(/>/g, "&gt;");
+            return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
         }
 
         function escapeAttr(s) {
-            return String(s)
-                .replace(/&/g, "&amp;")
-                .replace(/"/g, "&quot;")
-                .replace(/</g, "&lt;")
-                .replace(/>/g, "&gt;");
+            return String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
         }
 
         var loadingTitle = document.getElementById("loadingTitle");
@@ -925,24 +880,23 @@
             loadingOverlay.classList.remove("hidden");
             loadingOverlay.classList.add("flex");
 
-            btnProcess.disabled = true;
+            btnClear.disabled = true;
             btnCsv.disabled = true;
 
-            // If already cancelling, keep button disabled + label
             if (cancelRequested && btnCancel) {
                 btnCancel.disabled = true;
                 btnCancel.textContent = "Cancelling…";
             }
         }
 
-
-
         function hideLoading() {
             loadingOverlay.classList.add("hidden");
             loadingOverlay.classList.remove("flex");
 
-            btnProcess.disabled = false;
-            btnCsv.disabled = !(lastRows && lastRows.length);
+            btnClear.disabled = false;
+
+            // CSV only for parse store
+            btnCsv.disabled = !(store.parse && store.parse.length);
 
             loadingBar.style.width = "0%";
             loadingSub.textContent = "0 / 0 completed";
@@ -954,9 +908,7 @@
             }
         }
 
-
         var btnCancel = document.getElementById("btnCancel");
-
         btnCancel.addEventListener("click", function() {
             cancelRequested = true;
             btnCancel.disabled = true;
@@ -964,17 +916,13 @@
             setStatus("Cancelling… finishing current image.");
         });
 
-
-        // -------------------------
         // Responsive view: table (desktop) vs cards (mobile)
-        // -------------------------
         var cardsWrap = document.getElementById("cardsWrap");
         var cards = document.getElementById("cards");
 
         var btnCopyAllPokePasteTable = document.getElementById("btnCopyAllPokePasteTable");
         var btnCopyAllPokePasteMobile = document.getElementById("btnCopyAllPokePasteMobile");
         var mobileCopyAllBar = document.getElementById("mobileCopyAllBar");
-
 
         function isMobile() {
             return window.matchMedia("(max-width: 1270px)").matches;
@@ -985,9 +933,9 @@
             var now = isMobile();
             if (now !== _lastLayoutMobile) {
                 _lastLayoutMobile = now;
-
-                if (lastMode === "firestore") renderFirestore(lastRows || []);
-                else renderRows(lastRows || []);
+                var rows = getActiveRows(lastMode) || [];
+                if (lastMode === "firestore") renderFirestore(rows);
+                else renderRows(rows);
             }
         });
 
@@ -1015,7 +963,6 @@
                 renderTableRows(rows);
             }
             updateCopyAllButtons(rows);
-
         }
 
         function formatDebug(r) {
@@ -1024,94 +971,69 @@
             var left = [];
             var right = [];
 
-            // -------------------------
-            // Confidence (LEFT column)
-            // -------------------------
             if (r.debug.conf) {
                 left.push("CONFIDENCE");
                 Object.keys(r.debug.conf).forEach(function(k) {
                     var v = r.debug.conf[k];
                     if (typeof v === "number" && v > 0) {
-                        left.push(
-                            k.padEnd(10, " ") + ": " + (v * 100).toFixed(1) + "%"
-                        );
+                        left.push(k.padEnd(10, " ") + ": " + (v * 100).toFixed(1) + "%");
                     }
                 });
             }
 
-            // -------------------------
-            // Move candidates (RIGHT column)
-            // -------------------------
             if (Array.isArray(r.debug.move_candidates) && r.debug.move_candidates.length) {
                 right.push("MOVE CANDIDATES");
                 r.debug.move_candidates.forEach(function(mc) {
                     var name = mc[0] || "";
                     var conf = mc[1];
-                    right.push(
-                        name.padEnd(20, " ") + " " + (conf * 100).toFixed(1) + "%"
-                    );
+                    right.push(name.padEnd(20, " ") + " " + (conf * 100).toFixed(1) + "%");
                 });
             }
 
-            // -------------------------
-            // Merge side-by-side
-            // -------------------------
             var maxLines = Math.max(left.length, right.length);
             var out = [];
-            var colWidth = 28; // left column width
+            var colWidth = 28;
 
             for (var i = 0; i < maxLines; i++) {
                 var l = left[i] || "";
                 var r = right[i] || "";
-                out.push(
-                    l.padEnd(colWidth, " ") + "  " + r
-                );
+                out.push(l.padEnd(colWidth, " ") + "  " + r);
             }
 
             return out.join("\n");
         }
 
         async function copyAllPokePaste() {
-            if (lastMode === "firestore") return; // explicitly not supported
-            if (!lastRows || !lastRows.length) return setStatus("No rows to copy.");
+            if (lastMode === "firestore") return;
+            var rows = store.parse;
+            if (!rows || !rows.length) return setStatus("No rows to copy.");
 
-            var blocks = lastRows.map(function(r) {
-                return buildPokePaste(r); // respects your OTS toggle because buildPokePaste does
+            var blocks = rows.map(function(r) {
+                return buildPokePaste(r);
             });
-
             var allText = blocks.join("\n\n");
 
             try {
                 await navigator.clipboard.writeText(allText);
-                setStatus("Copied ALL PokePaste (" + lastRows.length + " Pokémon).");
+                setStatus("Copied ALL PokePaste (" + rows.length + " Pokémon).");
             } catch {
                 setStatus("Could not copy all PokePaste.");
             }
         }
 
-        if (btnCopyAllPokePasteTable) {
-            btnCopyAllPokePasteTable.addEventListener("click", copyAllPokePaste);
-        }
-        if (btnCopyAllPokePasteMobile) {
-            btnCopyAllPokePasteMobile.addEventListener("click", copyAllPokePaste);
-        }
+        if (btnCopyAllPokePasteTable) btnCopyAllPokePasteTable.addEventListener("click", copyAllPokePaste);
+        if (btnCopyAllPokePasteMobile) btnCopyAllPokePasteMobile.addEventListener("click", copyAllPokePaste);
 
         function updateCopyAllButtons(rows) {
             var show = (lastMode !== "firestore") && rows && rows.length;
 
-            // Desktop header buttons
             if (btnCopyAllPokePasteTable) btnCopyAllPokePasteTable.classList.toggle("hidden", !show);
             if (btnOtsTable) btnOtsTable.classList.toggle("hidden", !show);
 
-            // Mobile bar (only in mobile layout)
             if (mobileCopyAllBar) mobileCopyAllBar.classList.toggle("hidden", !show || !isMobile());
 
-            // Make sure button labels match current state
             setOtsUi();
         }
-
-
-
 
         var btnOtsTable = document.getElementById("btnOtsTable");
         var btnOtsMobile = document.getElementById("btnOtsMobile");
@@ -1132,15 +1054,13 @@
         function toggleOts() {
             otsEnabled = !otsEnabled;
             setOtsUi();
-
-            // Re-render so previews update
-            if (lastMode === "firestore") renderFirestore(lastRows || []);
-            else renderRows(lastRows || []);
+            var rows = getActiveRows(lastMode) || [];
+            if (lastMode === "firestore") renderFirestore(rows);
+            else renderRows(rows);
         }
 
         if (btnOtsTable) btnOtsTable.addEventListener("click", toggleOts);
         if (btnOtsMobile) btnOtsMobile.addEventListener("click", toggleOts);
-
         setOtsUi();
 
         function badgeImg(src, title) {
@@ -1152,9 +1072,7 @@
             );
         }
 
-        // -------------------------
         // Desktop table renderer
-        // -------------------------
         function renderTableRows(rows) {
             tbody.innerHTML = "";
 
@@ -1172,31 +1090,26 @@
                 var debug = formatDebug(r);
                 var pokepaste = buildPokePaste(r);
 
-                var pid = r.pokemon_id;
-                var sprite = pokemonDbArtworkUrl(r.pokemon);
+                //var sprite = pokemonDbArtworkUrl(r.pokemon);
+                var sprite = pokemonDbSpriteUrl(r.pokemon, r.shiny === true);
                 var shinyBadge = r.shiny ? ' ⭐' : '';
                 var alphaBadge = r.alpha ? badgeImg('./assets/alpha.png', 'Alpha Pokémon') : '';
                 var haBadge = r.ha ? ' 💎' : '';
 
                 var monCell =
                     '<td class="px-3 py-3 align-top">' +
-                    '<div class="flex items-center gap-3">' +
+                    '<div class="items-center gap-3">' +
                     (sprite ?
-                        '<img src="' + sprite + '" class="h-10 w-10 rounded-lg border border-white/10 bg-white/5 object-contain" ' +
+                        '<img src="' + sprite + '" class="h-12 w-12 rounded-xl border border-white/10 bg-white/5 object-contain" ' +
                         'alt="' + escapeHtml(r.pokemon || "") + '" ' +
                         'title="' + escapeHtml(r.pokemon || "") + '" ' +
                         'onerror="this.style.display=\'none\'; this.nextElementSibling.style.display=\'block\';" />' +
-                        // placeholder shown if image fails
                         '<div class="hidden h-10 w-10 rounded-lg border border-white/10 bg-white/5"></div>' :
                         '<div class="h-10 w-10 rounded-lg border border-white/10 bg-white/5"></div>'
                     ) +
-                    '<div class="min-w-0">' +
-                    '<div class="text-xs font-semibold text-slate-200 truncate">' + escapeHtml(r.pokemon || "") + '</div>' +
-                    '<div class="text-[11px] text-slate-400 truncate">' + escapeHtml(r.nickname || "") + '</div>' +
-                    '</div>' +
-                    '</div>' +
+                    '<button type="button" class="deleteBtn rounded-lg border border-white/10 bg-rose-500/10 px-2 py-1 text-[11px] font-semibold text-rose-200 hover:bg-rose-500/20" ' +
+                    'data-rid="' + escapeAttr(r._rid) + '" title="Delete this Pokémon">Delete</button>' +
                     '</td>';
-
 
                 var tr = document.createElement("tr");
                 tr.className = (idx % 2 === 0) ? "bg-white/0" : "bg-white/[0.02]";
@@ -1206,10 +1119,7 @@
                     '<td class="px-3 py-3 align-top text-slate-200/90 debug-col">' + escapeHtml(r.source_file || "") + '</td>' +
                     '<td class="px-3 py-3 align-top font-semibold">' + escapeHtml(r.nickname || "") + '</td>' +
                     '<td class="px-3 py-3 align-top">' +
-                    escapeHtml(r.pokemon || "") +
-                    shinyBadge +
-                    alphaBadge +
-                    haBadge +
+                    escapeHtml(r.pokemon || "") + shinyBadge + alphaBadge + haBadge +
                     '</td>' +
                     '<td class="px-3 py-3 align-top">' + escapeHtml(r.item || "") + '</td>' +
                     '<td class="px-3 py-3 align-top">' + escapeHtml(r.ability || "") + '</td>' +
@@ -1219,13 +1129,9 @@
                     '<td class="px-3 py-3 align-top font-mono whitespace-pre-wrap text-slate-200/90">' + escapeHtml(ivs) + '</td>' +
                     '<td class="px-3 py-3 align-top font-mono whitespace-pre-wrap text-slate-200/90">' + escapeHtml(moves) + '</td>' +
 
-                    // PokePaste cell: full-width button + panel
                     '<td class="px-3 py-3 align-top w-[360px] min-w-[320px]">' +
-                    '<button ' +
-                    'class="copyBtn w-full inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-indigo-500/15 px-3 py-2 text-xs font-semibold text-indigo-200 hover:bg-indigo-500/25 active:scale-[0.99]" ' +
-                    'title="Copy PokePaste" ' +
-                    'data-paste="' + escapeAttr(pokepaste) + '"' +
-                    '>' +
+                    '<button class="copyBtn w-full inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-indigo-500/15 px-3 py-2 text-xs font-semibold text-indigo-200 hover:bg-indigo-500/25 active:scale-[0.99]" ' +
+                    'title="Copy PokePaste" data-paste="' + escapeAttr(pokepaste) + '">' +
                     '<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">' +
                     '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16h8M8 12h8m-6 8h6a2 2 0 002-2V6a2 2 0 00-2-2h-2l-2-2H8a2 2 0 00-2 2v12a2 2 0 002 2z" />' +
                     '</svg>' +
@@ -1242,14 +1148,11 @@
                     escapeHtml(debug) +
                     '</td>';
 
-
                 tbody.appendChild(tr);
             });
         }
 
-        // -------------------------
         // Mobile cards renderer
-        // -------------------------
         function renderCards(rows) {
             rows.forEach(function(r) {
                 var evs = (r.ev_hp || 0) + "/" + (r.ev_atk || 0) + "/" + (r.ev_def || 0) + "/" + (r.ev_spa || 0) + "/" + (r.ev_spd || 0) + "/" + (r.ev_spe || 0);
@@ -1264,38 +1167,33 @@
                 var movesInline = [r.move1, r.move2, r.move3, r.move4].filter(Boolean).join(", ");
                 var pokepaste = buildPokePaste(r);
 
-                var pid = r.pokemon_id;
-                var sprite = pokemonDbArtworkUrl(r.pokemon);
+                //var sprite = pokemonDbArtworkUrl(r.pokemon);
+                var sprite = pokemonDbSpriteUrl(r.pokemon, r.shiny === true);
                 var shinyBadge = r.shiny ? ' ⭐' : '';
                 var alphaBadge = r.alpha ? badgeImg('./assets/alpha.png', 'Alpha Pokémon') : '';
                 var haBadge = r.ha ? ' 💎' : '';
+
                 var card = document.createElement("div");
                 card.className = "rounded-2xl border border-white/10 bg-slate-900/40 p-4 shadow-lg";
-
-                var sprite = pokemonDbArtworkUrl(r.pokemon);
 
                 card.innerHTML =
                     '<div class="flex items-center gap-3">' +
                     (sprite ?
-                        '<img src="' + sprite + '" ' +
-                        'class="h-12 w-12 rounded-xl border border-white/10 bg-white/5 object-contain" ' +
-                        'alt="' + escapeHtml(r.pokemon || "") + '" ' +
-                        'title="' + escapeHtml(r.pokemon || "") + '" ' +
+                        '<img src="' + sprite + '" class="h-12 w-12 rounded-xl border border-white/10 bg-white/5 object-contain" ' +
+                        'alt="' + escapeHtml(r.pokemon || "") + '" title="' + escapeHtml(r.pokemon || "") + '" ' +
                         'onerror="this.style.display=\'none\'; this.nextElementSibling.style.display=\'block\';" />' +
                         '<div class="hidden h-12 w-12 rounded-xl border border-white/10 bg-white/5"></div>' :
                         '<div class="h-12 w-12 rounded-xl border border-white/10 bg-white/5"></div>'
                     ) +
                     '<div class="min-w-0">' +
                     '<div class="text-sm font-semibold text-slate-100 truncate">' +
-                    escapeHtml(r.pokemon || "") +
-                    shinyBadge +
-                    alphaBadge +
-                    haBadge +
+                    escapeHtml(r.pokemon || "") + shinyBadge + alphaBadge + haBadge +
                     '</div>' +
-                    '<div class="text-xs text-slate-400 truncate">' +
-                    escapeHtml(r.nickname || "") +
+                    '<div class="text-xs text-slate-400 truncate">' + escapeHtml(r.nickname || "") + '</div>' +
+
                     '</div>' +
-                    '</div>' +
+                    '<button type="button" class="deleteBtn rounded-lg border border-white/10 bg-rose-500/10 px-3 py-1.5 text-xs font-semibold text-rose-200 hover:bg-rose-500/20" ' +
+                    'data-rid="' + escapeAttr(r._rid) + '" title="Delete this Pokémon">Delete</button>' +
                     '</div>' +
 
                     '<div class="mt-3 grid grid-cols-2 gap-2 text-xs">' +
@@ -1308,10 +1206,8 @@
                     '<div class="text-slate-400">Moves</div><div class="text-slate-100">' + escapeHtml(movesInline) + '</div>' +
                     '</div>' +
 
-                    '<button ' +
-                    'class="copyBtn mt-3 w-full inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-indigo-500/15 px-3 py-2 text-xs font-semibold text-indigo-200 hover:bg-indigo-500/25 active:scale-[0.99]" ' +
-                    'data-paste="' + escapeAttr(pokepaste) + '"' +
-                    '>' +
+                    '<button class="copyBtn mt-3 w-full inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-indigo-500/15 px-3 py-2 text-xs font-semibold text-indigo-200 hover:bg-indigo-500/25 active:scale-[0.99]" ' +
+                    'data-paste="' + escapeAttr(pokepaste) + '">' +
                     '<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">' +
                     '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16h8M8 12h8m-6 8h6a2 2 0 002-2V6a2 2 0 00-2-2h-2l-2-2H8a2 2 0 00-2 2v12a2 2 0 002 2z" />' +
                     '</svg>' +
@@ -1338,9 +1234,7 @@
             });
         }
 
-        // -------------------------
         // Copy handlers (table + cards)
-        // -------------------------
         tbody.addEventListener("click", copyHandler);
         cards.addEventListener("click", copyHandler);
 
@@ -1361,9 +1255,22 @@
             }
         }
 
-        // -------------------------
-        // CSV export (Google Sheet exact order)
-        // -------------------------
+        tbody.addEventListener("click", function(e) {
+            var btn = e.target.closest(".deleteBtn");
+            if (!btn) return;
+            var rid = btn.getAttribute("data-rid");
+            if (!rid) return;
+            deleteRowById(lastMode, rid);
+        });
+
+        cards.addEventListener("click", function(e) {
+            var btn = e.target.closest(".deleteBtn");
+            if (!btn) return;
+            var rid = btn.getAttribute("data-rid");
+            if (!rid) return;
+            deleteRowById(lastMode, rid);
+        });
+
         function csvCell(v) {
             var s = String(v != null ? v : "");
             if (/[,"\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
@@ -1372,14 +1279,10 @@
 
         function pokemonDbSlug(name) {
             if (!name) return "";
-
             var n = String(name).trim();
-
-            // Normalize some Unicode punctuation/accents that may appear
             n = n.replace(/\u2019/g, "'"); // curly apostrophe -> '
-            n = n.replace(/\u2640/g, "♀").replace(/\u2642/g, "♂"); // ensure symbols
+            n = n.replace(/\u2640/g, "♀").replace(/\u2642/g, "♂");
 
-            // Special-case mapping (matches your sheet logic)
             var map = {
                 "Shaymin": "shaymin-land",
                 "Mr. Mime": "mr-mime",
@@ -1410,21 +1313,13 @@
 
             if (map[n]) return map[n];
 
-            // Generic slug rules for PokemonDB artwork URLs:
-            // - lowercase
-            // - remove dots
-            // - apostrophes removed
-            // - spaces -> hyphen
-            // - keep hyphens
-            // - remove other non [a-z0-9-]
             var slug = n.toLowerCase();
-            slug = slug.replace(/\./g, ""); // remove dots (e.g. "Mr.")
-            slug = slug.replace(/'/g, ""); // remove apostrophes
-            slug = slug.replace(/♀/g, "-f"); // if OCR returns these without mapping
+            slug = slug.replace(/\./g, "");
+            slug = slug.replace(/'/g, "");
+            slug = slug.replace(/♀/g, "-f");
             slug = slug.replace(/♂/g, "-m");
-            slug = slug.replace(/\s+/g, "-"); // spaces to hyphen
-            slug = slug.replace(/[^a-z0-9-]/g, ""); // drop anything else
-
+            slug = slug.replace(/\s+/g, "-");
+            slug = slug.replace(/[^a-z0-9-]/g, "");
             return slug;
         }
 
@@ -1432,6 +1327,14 @@
             var slug = pokemonDbSlug(pokemonName);
             if (!slug) return "";
             return "https://img.pokemondb.net/artwork/" + slug + ".jpg";
+        }
+
+        function pokemonDbSpriteUrl(pokemonName, isShiny) {
+            var slug = pokemonDbSlug(pokemonName);
+            if (!slug) return "";
+
+            var folder = isShiny ? "shiny" : "normal";
+            return "https://img.pokemondb.net/sprites/black-white/" + folder + "/" + slug + ".png";
         }
 
 
@@ -1446,11 +1349,8 @@
 
             if (r.ability) lines.push("Ability: " + r.ability);
             if (r.level) lines.push("Level: " + r.level);
-
-            // Shiny flag
             if (r.shiny === true) lines.push("Shiny: Yes");
 
-            // ✅ OTS mode: hide EVs / IVs / Nature
             if (!otsEnabled) {
                 var evParts = [];
                 if (+r.ev_hp) evParts.push(r.ev_hp + " HP");
@@ -1480,8 +1380,8 @@
             return lines.join("\n");
         }
 
-
         btnCsv.addEventListener("click", function() {
+            var lastRows = store.parse;
             if (!lastRows.length) return;
 
             var headers = [
