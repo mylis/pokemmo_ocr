@@ -6,3 +6,4 @@ easyocr==1.7.1
 opencv-python==4.9.0.80
 pillow==10.2.0
 rapidfuzz==3.6.1
+aiofiles==23.2.1

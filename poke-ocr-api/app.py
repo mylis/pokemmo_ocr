@@ -16,14 +16,58 @@ from parse import parse_easyocr_results, POKEMON_TYPES, LABEL_SNIPPETS, BAD_TOKE
 from lookup import CanonicalLookups
 from rapidfuzz import process, fuzz
 
+import asyncio
+import aiofiles
+from concurrent.futures import ThreadPoolExecutor
+
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import JSONResponse
+# -----------------------------
+# Limits & concurrency settings
+# -----------------------------
+MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_BYTES", str(250 * 1024 * 1024)))   # total request cap (250MB)
+MAX_IMAGE_BYTES  = int(os.getenv("MAX_IMAGE_BYTES",  str(15  * 1024 * 1024)))   # per image cap (15MB)
+MAX_VIDEO_BYTES  = int(os.getenv("MAX_VIDEO_BYTES",  str(200 * 1024 * 1024)))   # per video cap (200MB)
+
+OCR_WORKERS  = int(os.getenv("OCR_WORKERS", "4"))   # threads per worker process
+OCR_INFLIGHT = int(os.getenv("OCR_INFLIGHT", "2"))  # max OCR calls at once per worker
+
+ocr_pool = ThreadPoolExecutor(max_workers=OCR_WORKERS)
+ocr_sem = asyncio.Semaphore(OCR_INFLIGHT)
+
+
+# -----------------------------
+# Request size limit middleware
+# -----------------------------
+class MaxBodySizeMiddleware(BaseHTTPMiddleware):
+    def __init__(self, app, max_bytes: int):
+        super().__init__(app)
+        self.max_bytes = max_bytes
+
+    async def dispatch(self, request: Request, call_next):
+        cl = request.headers.get("content-length")
+        if cl is not None:
+            try:
+                if int(cl) > self.max_bytes:
+                    return JSONResponse({"detail": "Request too large"}, status_code=413)
+            except ValueError:
+                pass
+        return await call_next(request)
+
 app = FastAPI(title="Pokemon OCR API")
 
+app.add_middleware(MaxBodySizeMiddleware, max_bytes=MAX_UPLOAD_BYTES)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["POST", "GET", "OPTIONS"],
-    allow_headers=["*"],
+    allow_origins=["*"],              # or set to your frontend origin(s)
+    allow_credentials=False,          # MUST be False if allow_origins=["*"]
+    allow_methods=["*"],              # includes OPTIONS preflight
+    allow_headers=["*"],              # allow Content-Type, Authorization, etc.
+    expose_headers=["*"],             # optional: lets browser read extra response headers
+    max_age=86400,                    # cache preflight for 24h
 )
+
 
 lookups = CanonicalLookups(
     skills_path="data/skills.json",
@@ -35,6 +79,49 @@ lookups.moves_lower = {m.lower() for m in lookups.moves}
 
 USE_GPU = os.getenv("EASYOCR_GPU", "0").lower() in ("1", "true", "yes", "on")
 reader = easyocr.Reader(["en"], gpu=USE_GPU)
+
+async def read_uploadfile_limited(f: UploadFile, max_bytes: int) -> bytes:
+    """
+    Safely read an UploadFile into memory with hard cap.
+    """
+    size = 0
+    chunks = []
+
+    while True:
+        chunk = await f.read(1024 * 1024)  # 1MB
+        if not chunk:
+            break
+
+        size += len(chunk)
+        if size > max_bytes:
+            raise HTTPException(status_code=413, detail=f"File too large (>{max_bytes} bytes)")
+
+        chunks.append(chunk)
+
+    return b"".join(chunks)
+
+
+async def save_uploadfile_limited(f: UploadFile, dst_path: str, max_bytes: int) -> int:
+    size = 0
+    async with aiofiles.open(dst_path, "wb") as out:
+        while True:
+            chunk = await f.read(1024 * 1024)
+            if not chunk:
+                break
+            size += len(chunk)
+            if size > max_bytes:
+                raise HTTPException(status_code=413, detail=f"Video too large (>{max_bytes} bytes)")
+            await out.write(chunk)
+    return size
+
+async def parse_one_image_async(img: Image.Image, source_name: str = "") -> dict:
+    """
+    Run parse_one_image_pil in a thread (concurrent), but cap inflight OCR.
+    """
+    async with ocr_sem:
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(ocr_pool, parse_one_image_pil, img, source_name)
+
 
 
 def ascii_only(s: str) -> str:
@@ -383,37 +470,19 @@ def keep_unique_frames(
 
     return kept
 
-def is_same_pokemon(a: dict, b: dict) -> bool:
-    if not a or not b:
-        return False
-
-    keys = [
-        "pokemon",
-        "level",
-        "nature",
-        "ability",
-        "item",
-        "ev_hp", "ev_atk", "ev_def", "ev_spa", "ev_spd", "ev_spe",
-        "iv_hp", "iv_atk", "iv_def", "iv_spa", "iv_spd", "iv_spe",
-        "move1", "move2", "move3", "move4",
-        "shiny",
-    ]
-
-    return all(a.get(k) == b.get(k) for k in keys)
-
 def parse_crop_param(crop_raw: Optional[str]) -> Optional[Tuple[int, int, int, int]]:
-    """
-    crop_raw: "x,y,w,h"
-    """
     if not crop_raw:
         return None
     parts = [p.strip() for p in crop_raw.split(",")]
     if len(parts) != 4:
         raise ValueError("crop must be 'x,y,w,h'")
     x, y, w, h = map(int, parts)
+    if x < 0 or y < 0:
+        raise ValueError("crop x/y must be >= 0")
     if w <= 0 or h <= 0:
         raise ValueError("crop width/height must be > 0")
     return (x, y, w, h)
+
 
 def parsed_signature(parsed: dict) -> tuple:
     """
@@ -480,6 +549,99 @@ def parsed_signature(parsed: dict) -> tuple:
     )
     return sig
 
+def mon_identity_key(parsed: dict) -> tuple:
+    """
+    A *looser* identity for 'same mon' across video frames.
+    Intentionally ignores fields that flicker with OCR (item/ability/moves/IV/EV).
+    Tune if needed.
+    """
+    def ns(x: str) -> str:
+        return ascii_only(str(x or "")).strip().lower()
+
+    def ni(x) -> int:
+        try:
+            return int(x)
+        except Exception:
+            return 0
+
+    return (
+        ns(parsed.get("pokemon")),
+        ni(parsed.get("level")),
+        ns(parsed.get("nature")),          # keep if nature is stable for you; remove if it flickers
+        1 if parsed.get("shiny") else 0,
+        1 if parsed.get("alpha") else 0,
+        1 if parsed.get("ha") else 0,
+    )
+
+
+def parsed_quality_score(parsed: dict) -> int:
+    """
+    Pick the best OCR among duplicates.
+    Higher score => more complete/usable record.
+    """
+    score = 0
+
+    # Big fields
+    for k in ("pokemon", "nature", "ability", "item", "move1", "move2", "move3", "move4"):
+        if (parsed.get(k) or "").strip():
+            score += 5
+
+    # Numeric fields (EV/IV/stats/level)
+    num_keys = (
+        "level",
+        "ev_hp","ev_atk","ev_def","ev_spa","ev_spd","ev_spe",
+        "iv_hp","iv_atk","iv_def","iv_spa","iv_spd","iv_spe",
+        "stat_hp","stat_atk","stat_def","stat_spa","stat_spd","stat_spe",
+    )
+    for k in num_keys:
+        v = parsed.get(k)
+        try:
+            if int(v) != 0:
+                score += 1
+        except Exception:
+            pass
+
+    # Bonus if shiny/alpha/ha detected (they’re important and stable)
+    score += 2 if parsed.get("shiny") else 0
+    score += 2 if parsed.get("alpha") else 0
+    score += 2 if parsed.get("ha") else 0
+
+    return score
+
+
+def dedupe_keep_best(parsed_list: list[dict]) -> list[dict]:
+    """
+    1) Remove exact duplicates by parsed_signature()
+    2) Collapse near-duplicates by mon_identity_key(), keeping best quality
+    """
+    # exact dedupe
+    seen_sig = set()
+    exact_unique = []
+    for p in parsed_list:
+        sig = parsed_signature(p)
+        if sig in seen_sig:
+            continue
+        seen_sig.add(sig)
+        exact_unique.append(p)
+
+    # loose dedupe with best-of selection
+    best_by_id: dict[tuple, tuple[int, int, dict]] = {}  # id -> (score, first_index, parsed)
+    for idx, p in enumerate(exact_unique):
+        mid = mon_identity_key(p)
+        sc = parsed_quality_score(p)
+
+        if mid not in best_by_id:
+            best_by_id[mid] = (sc, idx, p)
+        else:
+            prev_sc, prev_idx, prev_p = best_by_id[mid]
+            # choose higher score; tie-breaker: keep earliest
+            if sc > prev_sc:
+                best_by_id[mid] = (sc, prev_idx, p)
+
+    # return in original order of first occurrence
+    out = sorted(best_by_id.values(), key=lambda t: t[1])
+    return [p for _, _, p in out]
+
 
 @app.get("/health")
 def health():
@@ -494,17 +656,19 @@ async def parse(files: list[UploadFile] = File(...)):
     if not files:
         raise HTTPException(status_code=400, detail="No files uploaded")
 
-    rows = []
+    tasks = []
     for f in files:
-        data = await f.read()
+        data = await read_uploadfile_limited(f, MAX_IMAGE_BYTES)
         if not data:
             continue
 
-        img = Image.open(io.BytesIO(data)).convert("RGB")
-        parsed = parse_one_image_pil(img, source_name=f.filename or "")
-        rows.append(parsed)
+        with Image.open(io.BytesIO(data)) as im:
+            img = im.convert("RGB")
+        tasks.append(parse_one_image_async(img, source_name=f.filename or ""))
 
+    rows = await asyncio.gather(*tasks) if tasks else []
     return {"ok": True, "rows": rows}
+
 
 
 @app.post("/parse_firestore")
@@ -515,22 +679,24 @@ async def parse_firestore(
     if not files:
         raise HTTPException(status_code=400, detail="No files uploaded")
 
-    rows = []
-    for f in files:
-        data = await f.read()
+    async def one_file(f: UploadFile):
+        data = await read_uploadfile_limited(f, MAX_IMAGE_BYTES)
         if not data:
-            continue
+            return None
+        with Image.open(io.BytesIO(data)) as im:
+            img = im.convert("RGB")
 
-        img = Image.open(io.BytesIO(data)).convert("RGB")
-        parsed = parse_one_image_pil(img, source_name=f.filename or "")
-        rows.append(to_firestore_json(parsed, owner_id=ownerId))
+        parsed = await parse_one_image_async(img, source_name=f.filename or "")
+        return to_firestore_json(parsed, owner_id=ownerId)
+
+    tasks = [one_file(f) for f in files]
+    out = await asyncio.gather(*tasks)
+    rows = [r for r in out if r is not None]
 
     return {"ok": True, "rows": rows}
 
 
-# -----------------------------
-# New endpoints: video input
-# -----------------------------
+
 @app.post("/parse_video")
 async def parse_video(
     file: UploadFile = File(...),
@@ -542,61 +708,48 @@ async def parse_video(
     if not file:
         raise HTTPException(status_code=400, detail="No video uploaded")
 
-    crop_tuple = None
+    if compare_to not in ("last_kept", "all_kept"):
+        raise HTTPException(status_code=400, detail="compare_to must be 'last_kept' or 'all_kept'")
+
     try:
         crop_tuple = parse_crop_param(crop) if crop else None
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    # Save UploadFile to a temp file for OpenCV VideoCapture
+    tmp_path = None
     try:
         suffix = os.path.splitext(file.filename or "")[1] or ".mp4"
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tf:
-            tf.write(await file.read())
             tmp_path = tf.name
+
+        await save_uploadfile_limited(file, tmp_path, MAX_VIDEO_BYTES)
 
         frames = iter_sampled_frames(tmp_path, target_fps=target_fps, crop=crop_tuple)
         unique_frames = keep_unique_frames(frames, dist_threshold=dist_threshold, compare_to=compare_to)
 
-        rows = []
-        last_sig = None
+        tasks = [
+            parse_one_image_async(img, source_name=f"{file.filename or 'video'}#frame{idx}")
+            for idx, img in enumerate(unique_frames)
+        ]
+        parsed_list = await asyncio.gather(*tasks) if tasks else []
 
-        for idx, img in enumerate(unique_frames):
-            parsed = parse_one_image_pil(img, source_name=f"{file.filename or 'video'}#frame{idx}")
-
-            sig = parsed_signature(parsed)
-            if last_sig is not None and sig == last_sig:
-                # OCR result is identical to previous accepted frame -> skip
-                continue
-
-            rows.append(parsed)
-            last_sig = sig
-
-        deduped = []
-        last = None
-
-        for r in rows:
-            if last and is_same_pokemon(r, last):
-                continue
-            deduped.append(r)
-            last = r
-
-        rows = deduped
+        rows = dedupe_keep_best(parsed_list)
 
         return {
             "ok": True,
-            "frames_total": len(frames),
-            "frames_unique": len(unique_frames),
-            "rows": rows,
+            "frames_total": len(frames),              # sampled frames
+            "frames_unique": len(unique_frames),      # unique frames after hashing
+            "rows": rows,                             # unique mons after OCR-dedupe
             "rows_unique": len(rows),
         }
 
     finally:
         try:
-            if "tmp_path" in locals() and tmp_path and os.path.exists(tmp_path):
+            if tmp_path and os.path.exists(tmp_path):
                 os.remove(tmp_path)
         except Exception:
             pass
+
 
 
 @app.post("/parse_video_firestore")
@@ -611,44 +764,33 @@ async def parse_video_firestore(
     if not file:
         raise HTTPException(status_code=400, detail="No video uploaded")
 
-    crop_tuple = None
+    if compare_to not in ("last_kept", "all_kept"):
+        raise HTTPException(status_code=400, detail="compare_to must be 'last_kept' or 'all_kept'")
+
     try:
         crop_tuple = parse_crop_param(crop) if crop else None
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+    tmp_path = None
     try:
         suffix = os.path.splitext(file.filename or "")[1] or ".mp4"
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tf:
-            tf.write(await file.read())
             tmp_path = tf.name
+
+        await save_uploadfile_limited(file, tmp_path, MAX_VIDEO_BYTES)
 
         frames = iter_sampled_frames(tmp_path, target_fps=target_fps, crop=crop_tuple)
         unique_frames = keep_unique_frames(frames, dist_threshold=dist_threshold, compare_to=compare_to)
 
-        rows = []
-        last_sig = None
+        tasks = [
+            parse_one_image_async(img, source_name=f"{file.filename or 'video'}#frame{idx}")
+            for idx, img in enumerate(unique_frames)
+        ]
+        parsed_list = await asyncio.gather(*tasks) if tasks else []
 
-        for idx, img in enumerate(unique_frames):
-            parsed = parse_one_image_pil(img, source_name=f"{file.filename or 'video'}#frame{idx}")
-
-            sig = parsed_signature(parsed)
-            if last_sig is not None and sig == last_sig:
-                continue
-
-            rows.append(to_firestore_json(parsed, owner_id=ownerId))
-            last_sig = sig
-       
-        deduped = []
-        last = None
-
-        for r in rows:
-            if last and is_same_pokemon(r, last):
-                continue
-            deduped.append(r)
-            last = r
-
-        rows = deduped
+        parsed_unique = dedupe_keep_best(parsed_list)
+        rows = [to_firestore_json(p, owner_id=ownerId) for p in parsed_unique]
 
         return {
             "ok": True,
@@ -660,7 +802,7 @@ async def parse_video_firestore(
 
     finally:
         try:
-            if "tmp_path" in locals() and tmp_path and os.path.exists(tmp_path):
+            if tmp_path and os.path.exists(tmp_path):
                 os.remove(tmp_path)
         except Exception:
             pass
