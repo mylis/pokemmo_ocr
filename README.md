@@ -358,6 +358,36 @@ No admin permissions required.
 
 --- 
 
+## Frame Extractor (Video Helper Tool)
+
+When uploading videos, you can use the built-in Unique Frame Extractor to automatically detect when a new Pokémon appears.
+
+Instead of manually taking screenshots, the extractor:
+- Processes the video frame-by-frame
+- Lets you select a small region of the screen (typically the Pokémon name area)
+- Compares that region between frames
+- Saves a frame only when a meaningful change is detected
+
+This means:
+- You get one image per Pokémon
+- Duplicate frames are skipped automatically
+- You don’t need to manually trim your video
+
+### How It Works
+
+1) Upload a video
+2) Drag to select the pokemon preview screen
+3) Adjust the difference threshold if needed
+4) Extract frames
+5) Send frames directly to OCR or download them as ZIP
+
+The original concept for this frame extraction approach was inspired by:
+BigCurry – Niche PokeMMO Tools 
+https://bigcurry.github.io/Niche-PokeMMO-Tools/
+https://github.com/BigCurry/Niche-PokeMMO-Tools
+
+---
+
 ## Privacy & Data Handling
 
 This tool **does not log or store Pokémon data**.
