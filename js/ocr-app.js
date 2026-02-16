@@ -57,6 +57,43 @@
     var loadingSub = document.getElementById("loadingSub");
     var loadingBar = document.getElementById("loadingBar");
 
+    let hidePokePasteFromCsv = false;
+
+    const btnHideTable = document.getElementById("btnHidePpTable");
+    const btnHideMobile = document.getElementById("btnHidePpMobile");
+
+    // -------------------------
+    // CSV PokePaste toggle styling
+    // -------------------------
+    function applyHidePpButtonState(btn) {
+        if (!btn) return;
+
+        const disabled = hidePokePasteFromCsv; // true = hidden
+
+        btn.textContent = disabled ? "CSV PokePaste: Off" : "CSV PokePaste: On";
+
+        btn.classList.toggle("bg-emerald-500/15", !disabled);
+        btn.classList.toggle("text-emerald-200", !disabled);
+    }
+
+    function setHidePpUi() {
+        applyHidePpButtonState(btnHideTable);
+        applyHidePpButtonState(btnHideMobile);
+    }
+
+
+    function toggleHidePp() {
+        hidePokePasteFromCsv = !hidePokePasteFromCsv;
+        localStorage.setItem("hideCsvPp", hidePokePasteFromCsv ? "1" : "0");
+        setHidePpUi();
+    }
+
+    hidePokePasteFromCsv = localStorage.getItem("hideCsvPp") === "1";
+    setHidePpUi();
+    if (btnHideTable) btnHideTable.addEventListener("click", toggleHidePp);
+    if (btnHideMobile) btnHideMobile.addEventListener("click", toggleHidePp);
+
+
     // -------------------------
     // State
     // -------------------------
@@ -1024,9 +1061,12 @@
                 "EV HP", "EV Atk", "EV Def", "EV SpA", "EV SpD", "EV Spe",
                 "Nature",
                 "IV HP", "IV Atk", "IV Def", "IV SpA", "IV SpD", "IV Spe",
-                "Move 1", "Move 2", "Move 3", "Move 4",
-                "PokePaste Output"
+                "Move 1", "Move 2", "Move 3", "Move 4"
             ];
+
+            if (!hidePokePasteFromCsv) {
+                headers.push("PokePaste Output");
+            }
 
             var lines = [];
             lines.push(headers.map(csvCell).join(","));
@@ -1056,11 +1096,15 @@
                     r.move1 || "",
                     r.move2 || "",
                     r.move3 || "",
-                    r.move4 || "",
-                    buildPokePaste(r)
-                ].map(csvCell);
+                    r.move4 || ""
+                ];
 
-                lines.push(row.join(","));
+                // Only include PokePaste value if we're NOT hiding it
+                if (!hidePokePasteFromCsv) {
+                    row.push(buildPokePaste(r));
+                }
+
+                lines.push(row.map(csvCell).join(","));
             });
 
             var blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });

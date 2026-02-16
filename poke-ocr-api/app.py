@@ -5,7 +5,7 @@ import io
 import re
 import os
 import tempfile
-from typing import Optional, Tuple, List
+from typing import Optional, Tuple, List, Any
 
 import numpy as np
 import cv2
@@ -23,6 +23,7 @@ from concurrent.futures import ThreadPoolExecutor
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
+
 # -----------------------------
 # Limits & concurrency settings
 # -----------------------------
@@ -55,6 +56,7 @@ class MaxBodySizeMiddleware(BaseHTTPMiddleware):
                 pass
         return await call_next(request)
 
+
 app = FastAPI(title="Pokemon OCR API")
 
 app.add_middleware(MaxBodySizeMiddleware, max_bytes=MAX_UPLOAD_BYTES)
@@ -68,7 +70,6 @@ app.add_middleware(
     max_age=86400,                    # cache preflight for 24h
 )
 
-
 lookups = CanonicalLookups(
     skills_path="data/skills.json",
     items_path="data/items.json",
@@ -78,8 +79,15 @@ lookups = CanonicalLookups(
 lookups.moves_lower = {m.lower() for m in lookups.moves}
 
 USE_GPU = os.getenv("EASYOCR_GPU", "0").lower() in ("1", "true", "yes", "on")
-reader = easyocr.Reader(["en"], gpu=USE_GPU)
+reader = easyocr.Reader(
+    ["en"],
+    gpu=USE_GPU,
+    model_storage_directory=os.getenv("EASYOCR_MODULE_PATH", "/opt/easyocr"),
+)
 
+# -----------------------------
+# Upload helpers
+# -----------------------------
 async def read_uploadfile_limited(f: UploadFile, max_bytes: int) -> bytes:
     """
     Safely read an UploadFile into memory with hard cap.
@@ -114,6 +122,7 @@ async def save_uploadfile_limited(f: UploadFile, dst_path: str, max_bytes: int) 
             await out.write(chunk)
     return size
 
+
 async def parse_one_image_async(img: Image.Image, source_name: str = "") -> dict:
     """
     Run parse_one_image_pil in a thread (concurrent), but cap inflight OCR.
@@ -123,12 +132,15 @@ async def parse_one_image_async(img: Image.Image, source_name: str = "") -> dict
         return await loop.run_in_executor(ocr_pool, parse_one_image_pil, img, source_name)
 
 
-
+# -----------------------------
+# Small utils
+# -----------------------------
 def ascii_only(s: str) -> str:
     if not s:
         return ""
     s = "".join(ch for ch in str(s) if ord(ch) < 128)
     return s.strip()
+
 
 def _has_component(mask: np.ndarray, area_min: int, area_max: int) -> bool:
     num, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
@@ -138,6 +150,10 @@ def _has_component(mask: np.ndarray, area_min: int, area_max: int) -> bool:
             return True
     return False
 
+
+# -----------------------------
+# Fixed-position icon detectors
+# -----------------------------
 def detect_alpha_icon(img_bgr: np.ndarray) -> bool:
     """
     Red 'alpha' icon in the top-left.
@@ -157,6 +173,7 @@ def detect_alpha_icon(img_bgr: np.ndarray) -> bool:
 
     return bool(_has_component(mask, area_min=40, area_max=5000))
 
+
 def detect_shiny(img_bgr: np.ndarray) -> bool:
     """
     Yellow star in the VERY top-left.
@@ -174,24 +191,117 @@ def detect_shiny(img_bgr: np.ndarray) -> bool:
 
     return bool(_has_component(mask, area_min=30, area_max=3000))
 
-def detect_hidden_ability_diamond(img_bgr: np.ndarray) -> bool:
+
+# -----------------------------
+# Generic HA diamond detector (OCR-anchored)
+# -----------------------------
+def _bbox_center_y(bbox) -> float:
+    ys = [p[1] for p in bbox]
+    return float(sum(ys) / 4.0)
+
+def _bbox_right_x(bbox) -> float:
+    return float(max(p[0] for p in bbox))
+
+def _bbox_height(bbox) -> float:
+    ys = [p[1] for p in bbox]
+    return float(max(ys) - min(ys))
+
+def detect_hidden_ability_diamond_generic(img_bgr: np.ndarray, ocr_results) -> bool:
     """
-    Cyan/teal diamond next to Ability (middle-right area).
-    Fix: ROI moved left + thresholds loosened a bit for small/anti-aliased icon.
+    Generic HA diamond detector:
+    - Find 'Ability' label using OCR
+    - Search a fixed strip to the right of the LABEL (not the value)
+      so ability length / bbox weirdness can't hide the diamond
+    - Color mask for teal/cyan (low saturation allowed)
+    - Shape check using minAreaRect (more tolerant than 4-point approx)
     """
     h, w = img_bgr.shape[:2]
+    if not ocr_results:
+        return False
 
-    # ROI around the Ability row (works on your provided screenshots)
-    roi = img_bgr[int(0.58*h):int(0.75*h), int(0.30*w):int(0.75*w)]
+    # 1) locate "Ability" label bbox
+    ability_label_bbox = None
+    for bbox, text, conf in ocr_results:
+        if not text:
+            continue
+        tl = text.strip().lower()
+        # tolerant: Ability / Abil1ty / Abillty...
+        if (("abil" in tl) and (len(tl) <= 12)) or re.fullmatch(r"abil\w*", tl):
+            ability_label_bbox = bbox
+            break
+
+    if ability_label_bbox is None:
+        return False
+
+    row_y = _bbox_center_y(ability_label_bbox)
+    row_tol = max(18.0, _bbox_height(ability_label_bbox) * 1.6)
+    label_right = _bbox_right_x(ability_label_bbox)
+
+    # 2) build ROI strip to the right of the LABEL (covers the value + diamond)
+    x1 = int(np.clip(label_right + 6, 0, w - 1))
+    # wide enough to cover long abilities + diamond area
+    x2 = int(np.clip(label_right + 320, 0, w))
+
+    y1 = int(np.clip(row_y - row_tol * 1.15, 0, h - 1))
+    y2 = int(np.clip(row_y + row_tol * 1.15, 0, h))
+
+    if x2 <= x1 + 5 or y2 <= y1 + 5:
+        return False
+
+    roi = img_bgr[y1:y2, x1:x2]
+
+    # 3) teal/cyan mask (LOW saturation allowed!)
     hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
-
-    lower = np.array([75, 40, 40])
-    upper = np.array([120,255,255])
-
+    lower = np.array([70, 5, 55], dtype=np.uint8)
+    upper = np.array([135, 255, 255], dtype=np.uint8)
     mask = cv2.inRange(hsv, lower, upper)
-    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((3,3), np.uint8), iterations=1)
 
-    return bool(_has_component(mask, area_min=20, area_max=800))
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8), iterations=1)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8), iterations=1)
+
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return False
+
+    roi_area = roi.shape[0] * roi.shape[1]
+
+    for cnt in contours:
+        area = cv2.contourArea(cnt)
+        if area < 12 or area > roi_area * 0.25:
+            continue
+
+        rect = cv2.minAreaRect(cnt)
+        (cx, cy), (rw, rh), angle = rect
+        if rw <= 0 or rh <= 0:
+            continue
+
+        ar = max(rw, rh) / max(1.0, min(rw, rh))
+        if ar > 1.8:  # too skinny to be a diamond
+            continue
+
+        # How filled the box is (diamond is ~0.5, but give tolerance)
+        extent = area / float(rw * rh)
+        if extent < 0.18 or extent > 0.92:
+            continue
+
+        # size sanity (diamond is small)
+        if max(rw, rh) < 6 or max(rw, rh) > 40:
+            continue
+
+        return True
+
+    return False
+
+
+# -----------------------------
+# Image preprocessing for OCR
+# -----------------------------
+def preprocess_color_for_ui(img_bgr: np.ndarray) -> np.ndarray:
+    """
+    Match the same geometry used for OCR (2x upscaling).
+    Keep it in BGR so we can do HSV color detection aligned to OCR bboxes.
+    """
+    return cv2.resize(img_bgr, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
 
 
 def preprocess_for_ui(img_bgr: np.ndarray) -> np.ndarray:
@@ -202,6 +312,9 @@ def preprocess_for_ui(img_bgr: np.ndarray) -> np.ndarray:
     return gray
 
 
+# -----------------------------
+# Move picker
+# -----------------------------
 def pick_moves(parsed: dict, move_choices: list[str]) -> tuple[str, str, str, str]:
     raw_lines = [str(x) for x in parsed.get("debug", {}).get("raw_lines", [])]
     markings_idx = None
@@ -286,6 +399,9 @@ def pick_moves(parsed: dict, move_choices: list[str]) -> tuple[str, str, str, st
     return picked[0], picked[1], picked[2], picked[3]
 
 
+# -----------------------------
+# Firestore format
+# -----------------------------
 def to_firestore_json(parsed: dict, owner_id: str = "") -> dict:
     level = parsed.get("level") if parsed.get("level") not in ("", None) else 0
     try:
@@ -359,13 +475,15 @@ def parse_one_image_pil(img: Image.Image, source_name: str = "") -> dict:
 
     parsed = {}
 
-    # ✅ Detect icons (force Python bool)
+    # Fixed-position icons are OK on original
     parsed["shiny"] = bool(detect_shiny(img_bgr))
     parsed["alpha"] = bool(detect_alpha_icon(img_bgr))
-    parsed["ha"] = bool(detect_hidden_ability_diamond(img_bgr))
 
     prep = preprocess_for_ui(img_bgr)
+    img_bgr_big = preprocess_color_for_ui(img_bgr)
     results = reader.readtext(prep, detail=1, paragraph=False)
+
+    parsed["ha"] = bool(detect_hidden_ability_diamond_generic(img_bgr_big, results))
 
     parsed.update(parse_easyocr_results(results, conf_min=0.60))
     parsed = lookups.canonicalize(parsed)
@@ -458,17 +576,16 @@ def keep_unique_frames(
             continue
 
         if compare_to == "all_kept":
-            # Keep only if it's sufficiently different from ALL kept frames
             if all(hamming_distance(h, kh) >= dist_threshold for kh in kept_hashes):
                 kept.append(img)
                 kept_hashes.append(h)
         else:
-            # Default: compare to last kept only
             if hamming_distance(h, kept_hashes[-1]) >= dist_threshold:
                 kept.append(img)
                 kept_hashes.append(h)
 
     return kept
+
 
 def parse_crop_param(crop_raw: Optional[str]) -> Optional[Tuple[int, int, int, int]]:
     if not crop_raw:
@@ -485,15 +602,6 @@ def parse_crop_param(crop_raw: Optional[str]) -> Optional[Tuple[int, int, int, i
 
 
 def parsed_signature(parsed: dict) -> tuple:
-    """
-    Build a stable fingerprint of the extracted Pokémon info.
-    If this signature matches the previous accepted frame, we skip it.
-
-    Important:
-    - Do NOT include debug/source_file
-    - Normalize strings (lower/strip) so minor OCR formatting differences don't matter
-    - Keep numeric fields as ints
-    """
     def norm_str(x) -> str:
         return ascii_only(str(x or "")).strip().lower()
 
@@ -506,8 +614,6 @@ def parsed_signature(parsed: dict) -> tuple:
     def norm_bool(x) -> int:
         return 1 if x else 0
 
-
-    # Moves in order (your picker already produces stable canonical names)
     moves = (
         norm_str(parsed.get("move1")),
         norm_str(parsed.get("move2")),
@@ -515,16 +621,13 @@ def parsed_signature(parsed: dict) -> tuple:
         norm_str(parsed.get("move4")),
     )
 
-    # Key identity + build info
     sig = (
         norm_str(parsed.get("pokemon")),
-        # norm_str(parsed.get("nickname")),
         norm_int(parsed.get("level")),
         norm_str(parsed.get("nature")),
         norm_str(parsed.get("ability")),
         norm_str(parsed.get("item")),
 
-        # EVs
         norm_int(parsed.get("ev_hp")),
         norm_int(parsed.get("ev_atk")),
         norm_int(parsed.get("ev_def")),
@@ -532,7 +635,6 @@ def parsed_signature(parsed: dict) -> tuple:
         norm_int(parsed.get("ev_spd")),
         norm_int(parsed.get("ev_spe")),
 
-        # IVs
         norm_int(parsed.get("iv_hp")),
         norm_int(parsed.get("iv_atk")),
         norm_int(parsed.get("iv_def")),
@@ -544,17 +646,12 @@ def parsed_signature(parsed: dict) -> tuple:
         norm_bool(parsed.get("alpha")),
         norm_bool(parsed.get("ha")),
 
-        # Moves
         moves,
     )
     return sig
 
+
 def mon_identity_key(parsed: dict) -> tuple:
-    """
-    A *looser* identity for 'same mon' across video frames.
-    Intentionally ignores fields that flicker with OCR (item/ability/moves/IV/EV).
-    Tune if needed.
-    """
     def ns(x: str) -> str:
         return ascii_only(str(x or "")).strip().lower()
 
@@ -567,7 +664,7 @@ def mon_identity_key(parsed: dict) -> tuple:
     return (
         ns(parsed.get("pokemon")),
         ni(parsed.get("level")),
-        ns(parsed.get("nature")),          # keep if nature is stable for you; remove if it flickers
+        ns(parsed.get("nature")),
         1 if parsed.get("shiny") else 0,
         1 if parsed.get("alpha") else 0,
         1 if parsed.get("ha") else 0,
@@ -575,18 +672,12 @@ def mon_identity_key(parsed: dict) -> tuple:
 
 
 def parsed_quality_score(parsed: dict) -> int:
-    """
-    Pick the best OCR among duplicates.
-    Higher score => more complete/usable record.
-    """
     score = 0
 
-    # Big fields
     for k in ("pokemon", "nature", "ability", "item", "move1", "move2", "move3", "move4"):
         if (parsed.get(k) or "").strip():
             score += 5
 
-    # Numeric fields (EV/IV/stats/level)
     num_keys = (
         "level",
         "ev_hp","ev_atk","ev_def","ev_spa","ev_spd","ev_spe",
@@ -601,7 +692,6 @@ def parsed_quality_score(parsed: dict) -> int:
         except Exception:
             pass
 
-    # Bonus if shiny/alpha/ha detected (they’re important and stable)
     score += 2 if parsed.get("shiny") else 0
     score += 2 if parsed.get("alpha") else 0
     score += 2 if parsed.get("ha") else 0
@@ -610,11 +700,6 @@ def parsed_quality_score(parsed: dict) -> int:
 
 
 def dedupe_keep_best(parsed_list: list[dict]) -> list[dict]:
-    """
-    1) Remove exact duplicates by parsed_signature()
-    2) Collapse near-duplicates by mon_identity_key(), keeping best quality
-    """
-    # exact dedupe
     seen_sig = set()
     exact_unique = []
     for p in parsed_list:
@@ -624,8 +709,7 @@ def dedupe_keep_best(parsed_list: list[dict]) -> list[dict]:
         seen_sig.add(sig)
         exact_unique.append(p)
 
-    # loose dedupe with best-of selection
-    best_by_id: dict[tuple, tuple[int, int, dict]] = {}  # id -> (score, first_index, parsed)
+    best_by_id: dict[tuple, tuple[int, int, dict]] = {}
     for idx, p in enumerate(exact_unique):
         mid = mon_identity_key(p)
         sc = parsed_quality_score(p)
@@ -634,11 +718,9 @@ def dedupe_keep_best(parsed_list: list[dict]) -> list[dict]:
             best_by_id[mid] = (sc, idx, p)
         else:
             prev_sc, prev_idx, prev_p = best_by_id[mid]
-            # choose higher score; tie-breaker: keep earliest
             if sc > prev_sc:
                 best_by_id[mid] = (sc, prev_idx, p)
 
-    # return in original order of first occurrence
     out = sorted(best_by_id.values(), key=lambda t: t[1])
     return [p for _, _, p in out]
 
@@ -670,7 +752,6 @@ async def parse(files: list[UploadFile] = File(...)):
     return {"ok": True, "rows": rows}
 
 
-
 @app.post("/parse_firestore")
 async def parse_firestore(
     files: list[UploadFile] = File(...),
@@ -694,7 +775,6 @@ async def parse_firestore(
     rows = [r for r in out if r is not None]
 
     return {"ok": True, "rows": rows}
-
 
 
 @app.post("/parse_video")
@@ -737,9 +817,9 @@ async def parse_video(
 
         return {
             "ok": True,
-            "frames_total": len(frames),              # sampled frames
-            "frames_unique": len(unique_frames),      # unique frames after hashing
-            "rows": rows,                             # unique mons after OCR-dedupe
+            "frames_total": len(frames),
+            "frames_unique": len(unique_frames),
+            "rows": rows,
             "rows_unique": len(rows),
         }
 
@@ -749,7 +829,6 @@ async def parse_video(
                 os.remove(tmp_path)
         except Exception:
             pass
-
 
 
 @app.post("/parse_video_firestore")

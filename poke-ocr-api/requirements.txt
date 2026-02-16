@@ -1,9 +1,21 @@
-numpy==1.26.4
-fastapi==0.110.0
-uvicorn[standard]==0.27.1
+# --- Web API ---
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+gunicorn==23.0.0
 python-multipart==0.0.9
-easyocr==1.7.1
-opencv-python==4.9.0.80
-pillow==10.2.0
-rapidfuzz==3.6.1
 aiofiles==23.2.1
+
+# --- OCR / Image ---
+easyocr==1.7.1
+opencv-python-headless==4.10.0.84
+pillow==10.4.0
+numpy==1.26.4
+rapidfuzz==3.6.1
+
+# --- ML backend (EasyOCR dependency) ---
+torch==2.3.1
+torchvision==0.18.1
+
+# --- Utilities (commonly used in API code) ---
+requests==2.32.3
+pydantic==2.9.2
