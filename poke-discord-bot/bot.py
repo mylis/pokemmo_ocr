@@ -15,6 +15,8 @@ DISCORD_TOKEN = os.getenv("DISCORD_TOKEN", "").strip()
 API_BASE = os.getenv("API_BASE", "").strip().rstrip("/")  # e.g. https://api.mylis.net
 DEFAULT_MODE = os.getenv("DEFAULT_MODE", "full").strip().lower()  # "full" | "ots"
 
+WEB_APP_URL = "https://mylis.github.io/pokemmo_ocr/"
+
 if not DISCORD_TOKEN:
     raise RuntimeError("Missing DISCORD_TOKEN env var")
 if not API_BASE:
@@ -524,7 +526,7 @@ async def ocr(
     await interaction.followup.send(
         content=(
             f"✅ Done! Found **{len(rows)}** Pokémon.\n"
-            f"Mode: **{'OTS' if ots else 'Full'}** | API: `{API_BASE}`\n\n"
+            f"Mode: **{'OTS' if ots else 'Full'}**\n\n"
             f"{summaries}\n\n"
             f"Use the dropdown + buttons to copy **ALL** or **selected** PokePaste."
         ),
@@ -579,7 +581,7 @@ async def ocr_json(
     fp = io.BytesIO(json_bytes)
 
     await interaction.followup.send(
-        content=f"✅ JSON ready. Count: **{len(normalized_rows)}** | API: `{API_BASE}`",
+        content=f"✅ JSON ready. Count: **{len(normalized_rows)}**",
         file=discord.File(fp, filename="rows.json")
     )
 
@@ -629,9 +631,73 @@ async def ocr_pokepaste(
     fp = io.BytesIO(text.encode("utf-8"))
 
     await interaction.followup.send(
-        content=f"✅ PokePaste ready. Mode: **{'OTS' if ots else 'Full'}** | Count: **{len(rows)}** | API: `{API_BASE}`",
+        content=f"✅ PokePaste ready. Mode: **{'OTS' if ots else 'Full'}** | Count: **{len(rows)}**",
         file=discord.File(fp, filename="pokepaste.txt")
     )
+
+@client.tree.command(name="help", description="Show help and usage examples.")
+async def help_cmd(interaction: discord.Interaction):
+    mode_label = "OTS" if DEFAULT_MODE == "ots" else "Full"
+
+    msg = (
+        "**OCR Bot Help**\n\n"
+        "**Commands**\n"
+        "• `/ocr` — OCR screenshots (or one video). Returns **PokePaste** + picker UI.\n"
+        "• `/ocr_pokepaste` — OCR and return **only** `pokepaste.txt`.\n"
+        "• `/ocr_json` — OCR and return **only** `rows.json`.\n"
+        "• `/ping` — Check if the bot is alive.\n\n"
+        "**Mode**\n"
+        f"• Default mode: **{mode_label}** (set by `DEFAULT_MODE` env)\n"
+        "• `Full` includes EV/IV/Nature in PokePaste.\n"
+        "• `OTS` hides EV/IV/Nature in PokePaste.\n\n"
+        "**Attachments rules**\n"
+        f"• Up to **{MAX_ATTACHMENTS}** images **OR** **1** video.\n"
+        "• Don’t mix images + video in the same command.\n\n"
+        "**Examples**\n"
+        "• Upload 3 screenshots: `/ocr mode: Full` + attach `file1..file3`\n"
+        "• Upload 1 video: `/ocr mode: OTS` + attach `file1`\n"
+        "• Want PokePaste only: `/ocr_pokepaste` + attach screenshots\n\n"
+        "**Online Tool**\n"
+        "You can also use the web version below."
+    )
+
+    # Create link button
+    view = discord.ui.View()
+    view.add_item(
+        discord.ui.Button(
+            label="Open Web Tool",
+            url=WEB_APP_URL,
+            style=discord.ButtonStyle.link
+        )
+    )
+
+    await interaction.response.send_message(msg, view=view, ephemeral=True)
+
+@client.tree.command(name="about", description="About this OCR bot.")
+async def about_cmd(interaction: discord.Interaction):
+    msg = (
+        "🤖 **PokeMMO OCR Bot**\n\n"
+        "This bot extracts Pokémon data from screenshots or videos "
+        "and converts them into **PokePaste** or structured JSON.\n\n"
+
+        "**Features**\n"
+        "• OCR from images OR video\n"
+        "• Generates PokePaste automatically\n"
+        "• OTS mode support\n"
+        "• Interactive Pokémon picker\n"
+        "• JSON export for database use\n\n"
+    )
+
+    view = discord.ui.View()
+    view.add_item(
+        discord.ui.Button(
+            label="Open Web Tool",
+            url=WEB_APP_URL,
+            style=discord.ButtonStyle.link
+        )
+    )
+
+    await interaction.response.send_message(msg, view=view, ephemeral=True)
 
 
 @client.tree.command(name="ping", description="Check if the bot is alive.")
