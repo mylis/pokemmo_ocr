@@ -140,6 +140,14 @@
         btnFirestore.style.display = "none";
     }
 
+    if (!debugEnabled && sendToFirestoreBtn) {
+        sendToFirestoreBtn.style.display = "none";
+    }
+
+    if (!debugEnabled && sendRoiToFirestoreBtn) {
+        sendRoiToFirestoreBtn.style.display = "none";
+    }
+
     // -------------------------
     // Status + clear
     // -------------------------
