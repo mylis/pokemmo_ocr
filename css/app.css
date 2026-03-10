@@ -5,8 +5,8 @@
 :root {
     --bg: #020617;
     /* slate-950 */
-    --panel: rgba(255, 255, 255, .05);
-    --panel-2: rgba(0, 0, 0, .20);
+    --panel: rgba(15, 23, 42, .8);
+    --panel-2: rgba(2, 6, 23, .86);
     --border: rgba(255, 255, 255, .10);
     --border-2: rgba(255, 255, 255, .15);
     --text: #f1f5f9;
@@ -80,9 +80,7 @@ body {
     margin: 0 auto;
     padding: 1.5rem 1rem;
     /* py-6 px-4 */
-    background: rgba(2, 6, 23, .12);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    background: rgba(2, 6, 23, .68);
     border-radius: 1.5rem;
     width: min(100%, 80rem);
 }
@@ -92,8 +90,6 @@ body {
     background: var(--panel);
     border-radius: var(--radius-2xl);
     box-shadow: var(--shadow);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
 }
 
 .card-inner {
@@ -105,8 +101,6 @@ body {
     background: var(--panel-2);
     border-radius: var(--radius-2xl);
     box-shadow: var(--inset);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
 }
 
 
@@ -294,8 +288,6 @@ body {
     text-align: center;
     outline: none;
     transition: border-color .15s ease, background .15s ease;
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
 }
 
 .dropzone.is-over {
@@ -341,8 +333,6 @@ body {
     border: 1px solid var(--border);
     background: var(--panel);
     box-shadow: 0 12px 35px rgba(0, 0, 0, .35);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
 }
 
 
@@ -361,8 +351,7 @@ body {
 .table thead {
     position: sticky;
     top: 0;
-    background: rgba(15, 23, 42, .90);
-    backdrop-filter: blur(6px);
+    background: rgba(15, 23, 42, .96);
     border-bottom: 1px solid var(--border);
 }
 
@@ -415,8 +404,7 @@ body {
     display: none;
     align-items: center;
     justify-content: center;
-    background: rgba(0, 0, 0, .70);
-    backdrop-filter: blur(6px);
+    background: rgba(2, 6, 23, .9);
 }
 
 .overlay.is-open {
@@ -499,8 +487,6 @@ body.modal-open {
     background: rgba(15, 23, 42, .95);
     box-shadow: var(--shadow);
     overflow: hidden;
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
 }
 
 @media (min-width: 640px) {
@@ -611,9 +597,7 @@ body.modal-open {
 .site-footer {
     margin-top: 2.5rem;
     border-top: 1px solid var(--border);
-    background: rgba(2, 6, 23, .58);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
+    background: rgba(2, 6, 23, .88);
     flex-shrink: 0;
 }
 
