@@ -7,6 +7,12 @@
 
     if (!modal) return;
 
+    // Keep the modal at the document root so fixed positioning is anchored
+    // to the viewport instead of any constrained app container.
+    if (modal.parentElement !== document.body) {
+        document.body.appendChild(modal);
+    }
+
     function openModal() {
         modal.classList.add("is-open");
         modal.setAttribute("aria-hidden", "false");

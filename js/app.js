@@ -1,5 +1,9 @@
 // app.js
 (function() {
+    if (window.PoryBackground) {
+        window.PoryBackground.setup();
+    }
+
     if (!window.VideoFrameTool || !window.OcrApp) return;
 
     window.VideoFrameTool.init({
