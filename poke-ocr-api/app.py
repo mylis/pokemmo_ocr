@@ -4,8 +4,10 @@ from fastapi.middleware.cors import CORSMiddleware
 import io
 import re
 import os
+import gc
 import tempfile
-from typing import Optional, Tuple, List, Any
+import threading
+from typing import Optional, Tuple, List, Iterable
 
 import numpy as np
 import cv2
@@ -32,10 +34,11 @@ MAX_IMAGE_BYTES  = int(os.getenv("MAX_IMAGE_BYTES",  str(15  * 1024 * 1024)))   
 MAX_VIDEO_BYTES  = int(os.getenv("MAX_VIDEO_BYTES",  str(200 * 1024 * 1024)))   # per video cap (200MB)
 
 OCR_WORKERS  = int(os.getenv("OCR_WORKERS", "4"))   # threads per worker process
-OCR_INFLIGHT = int(os.getenv("OCR_INFLIGHT", "2"))  # max OCR calls at once per worker
+OCR_INFLIGHT_ENV = os.getenv("OCR_INFLIGHT")        # max OCR calls at once per worker
+OCR_SERIALIZE_GPU = os.getenv("OCR_SERIALIZE_GPU", "1").lower() in ("1", "true", "yes", "on")
+OCR_CUDA_CLEANUP_EVERY = int(os.getenv("OCR_CUDA_CLEANUP_EVERY", "100"))
 
 ocr_pool = ThreadPoolExecutor(max_workers=OCR_WORKERS)
-ocr_sem = asyncio.Semaphore(OCR_INFLIGHT)
 
 
 # -----------------------------
@@ -79,11 +82,23 @@ lookups = CanonicalLookups(
 lookups.moves_lower = {m.lower() for m in lookups.moves}
 
 USE_GPU = os.getenv("EASYOCR_GPU", "0").lower() in ("1", "true", "yes", "on")
+
+try:
+    import torch
+except Exception:
+    torch = None
+
+OCR_INFLIGHT = int(OCR_INFLIGHT_ENV) if OCR_INFLIGHT_ENV else (1 if USE_GPU else 2)
+ocr_sem = asyncio.Semaphore(OCR_INFLIGHT)
+
 reader = easyocr.Reader(
     ["en"],
     gpu=USE_GPU,
     model_storage_directory=os.getenv("EASYOCR_MODULE_PATH", "/opt/easyocr"),
 )
+gpu_reader_lock = threading.Lock() if (USE_GPU and OCR_SERIALIZE_GPU) else None
+gpu_cleanup_lock = threading.Lock()
+gpu_calls_since_cleanup = 0
 
 # -----------------------------
 # Upload helpers
@@ -149,6 +164,51 @@ def _has_component(mask: np.ndarray, area_min: int, area_max: int) -> bool:
         if area_min <= area <= area_max:
             return True
     return False
+
+
+def _safe_cuda_stats() -> dict:
+    if not USE_GPU or torch is None or not torch.cuda.is_available():
+        return {"enabled": False}
+    try:
+        return {
+            "enabled": True,
+            "allocated_bytes": int(torch.cuda.memory_allocated()),
+            "reserved_bytes": int(torch.cuda.memory_reserved()),
+            "max_allocated_bytes": int(torch.cuda.max_memory_allocated()),
+            "max_reserved_bytes": int(torch.cuda.max_memory_reserved()),
+        }
+    except Exception:
+        return {"enabled": True, "error": "cuda_stats_unavailable"}
+
+
+def _cleanup_cuda_cache(force: bool = False) -> None:
+    global gpu_calls_since_cleanup
+
+    if not USE_GPU or torch is None or not torch.cuda.is_available():
+        return
+
+    with gpu_cleanup_lock:
+        if not force:
+            gpu_calls_since_cleanup += 1
+            if gpu_calls_since_cleanup < max(1, OCR_CUDA_CLEANUP_EVERY):
+                return
+        gpu_calls_since_cleanup = 0
+
+        gc.collect()
+        torch.cuda.empty_cache()
+        if hasattr(torch.cuda, "ipc_collect"):
+            torch.cuda.ipc_collect()
+
+
+def _run_easyocr(prep: np.ndarray):
+    if USE_GPU and torch is not None:
+        with torch.inference_mode():
+            if gpu_reader_lock is not None:
+                with gpu_reader_lock:
+                    return reader.readtext(prep, detail=1, paragraph=False)
+            return reader.readtext(prep, detail=1, paragraph=False)
+
+    return reader.readtext(prep, detail=1, paragraph=False)
 
 
 # -----------------------------
@@ -470,8 +530,8 @@ def to_firestore_json(parsed: dict, owner_id: str = "") -> dict:
 # Shared image parsing pipeline
 # -----------------------------
 def parse_one_image_pil(img: Image.Image, source_name: str = "") -> dict:
-    img = img.convert("RGB")
-    img_bgr = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
+    img_rgb = img.convert("RGB")
+    img_bgr = cv2.cvtColor(np.array(img_rgb), cv2.COLOR_RGB2BGR)
 
     parsed = {}
 
@@ -481,7 +541,8 @@ def parse_one_image_pil(img: Image.Image, source_name: str = "") -> dict:
 
     prep = preprocess_for_ui(img_bgr)
     img_bgr_big = preprocess_color_for_ui(img_bgr)
-    results = reader.readtext(prep, detail=1, paragraph=False)
+    results = _run_easyocr(prep)
+    _cleanup_cuda_cache()
 
     parsed["ha"] = bool(detect_hidden_ability_diamond_generic(img_bgr_big, results))
 
@@ -494,6 +555,12 @@ def parse_one_image_pil(img: Image.Image, source_name: str = "") -> dict:
 
     if source_name:
         parsed["source_file"] = source_name
+
+    img_rgb.close()
+    del img_bgr
+    del img_bgr_big
+    del prep
+    del results
 
     return parsed
 
@@ -524,7 +591,7 @@ def iter_sampled_frames(
     video_path: str,
     target_fps: float = 3.0,
     crop: Optional[Tuple[int, int, int, int]] = None,  # x,y,w,h
-) -> List[Image.Image]:
+) -> Iterable[Image.Image]:
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
         raise RuntimeError(f"Could not open video: {video_path}")
@@ -532,7 +599,6 @@ def iter_sampled_frames(
     fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
     step = max(1, int(round(fps / max(target_fps, 0.1))))
 
-    frames: List[Image.Image] = []
     i = 0
     while True:
         ok, frame = cap.read()
@@ -549,25 +615,23 @@ def iter_sampled_frames(
             frame = frame[y : y + h, x : x + w]
 
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        frames.append(Image.fromarray(rgb))
+        yield Image.fromarray(rgb)
 
     cap.release()
-    return frames
 
 
 def keep_unique_frames(
-    frames: List[Image.Image],
+    frames: Iterable[Image.Image],
     dist_threshold: int = 6,
     compare_to: str = "last_kept",  # "last_kept" (fast) or "all_kept" (strict)
     hash_size: int = 8,
-) -> List[Image.Image]:
-    if not frames:
-        return []
-
+) -> tuple[List[Image.Image], int]:
     kept: List[Image.Image] = []
     kept_hashes: List[int] = []
+    frames_total = 0
 
     for img in frames:
+        frames_total += 1
         h = dhash(img, hash_size=hash_size)
 
         if not kept:
@@ -579,12 +643,16 @@ def keep_unique_frames(
             if all(hamming_distance(h, kh) >= dist_threshold for kh in kept_hashes):
                 kept.append(img)
                 kept_hashes.append(h)
+            else:
+                img.close()
         else:
             if hamming_distance(h, kept_hashes[-1]) >= dist_threshold:
                 kept.append(img)
                 kept_hashes.append(h)
+            else:
+                img.close()
 
-    return kept
+    return kept, frames_total
 
 
 def parse_crop_param(crop_raw: Optional[str]) -> Optional[Tuple[int, int, int, int]]:
@@ -727,7 +795,17 @@ def dedupe_keep_best(parsed_list: list[dict]) -> list[dict]:
 
 @app.get("/health")
 def health():
-    return {"ok": True}
+    return {
+        "ok": True,
+        "gpu": {
+            "use_gpu": USE_GPU,
+            "serialize_gpu": OCR_SERIALIZE_GPU,
+            "cuda_cleanup_every": OCR_CUDA_CLEANUP_EVERY,
+            "inflight_limit": OCR_INFLIGHT,
+            "torch_present": torch is not None,
+            "cuda": _safe_cuda_stats(),
+        },
+    }
 
 
 # -----------------------------
@@ -738,17 +816,19 @@ async def parse(files: list[UploadFile] = File(...)):
     if not files:
         raise HTTPException(status_code=400, detail="No files uploaded")
 
-    tasks = []
-    for f in files:
+    async def one_file(f: UploadFile):
         data = await read_uploadfile_limited(f, MAX_IMAGE_BYTES)
         if not data:
-            continue
-
+            return None
         with Image.open(io.BytesIO(data)) as im:
             img = im.convert("RGB")
-        tasks.append(parse_one_image_async(img, source_name=f.filename or ""))
+        try:
+            return await parse_one_image_async(img, source_name=f.filename or "")
+        finally:
+            img.close()
 
-    rows = await asyncio.gather(*tasks) if tasks else []
+    out = await asyncio.gather(*[one_file(f) for f in files])
+    rows = [r for r in out if r is not None]
     return {"ok": True, "rows": rows}
 
 
@@ -766,9 +846,11 @@ async def parse_firestore(
             return None
         with Image.open(io.BytesIO(data)) as im:
             img = im.convert("RGB")
-
-        parsed = await parse_one_image_async(img, source_name=f.filename or "")
-        return to_firestore_json(parsed, owner_id=ownerId)
+        try:
+            parsed = await parse_one_image_async(img, source_name=f.filename or "")
+            return to_firestore_json(parsed, owner_id=ownerId)
+        finally:
+            img.close()
 
     tasks = [one_file(f) for f in files]
     out = await asyncio.gather(*tasks)
@@ -804,20 +886,25 @@ async def parse_video(
 
         await save_uploadfile_limited(file, tmp_path, MAX_VIDEO_BYTES)
 
-        frames = iter_sampled_frames(tmp_path, target_fps=target_fps, crop=crop_tuple)
-        unique_frames = keep_unique_frames(frames, dist_threshold=dist_threshold, compare_to=compare_to)
+        unique_frames, frames_total = keep_unique_frames(
+            iter_sampled_frames(tmp_path, target_fps=target_fps, crop=crop_tuple),
+            dist_threshold=dist_threshold,
+            compare_to=compare_to,
+        )
 
-        tasks = [
-            parse_one_image_async(img, source_name=f"{file.filename or 'video'}#frame{idx}")
-            for idx, img in enumerate(unique_frames)
-        ]
-        parsed_list = await asyncio.gather(*tasks) if tasks else []
+        parsed_list = []
+        for idx, img in enumerate(unique_frames):
+            try:
+                parsed = await parse_one_image_async(img, source_name=f"{file.filename or 'video'}#frame{idx}")
+                parsed_list.append(parsed)
+            finally:
+                img.close()
 
         rows = dedupe_keep_best(parsed_list)
 
         return {
             "ok": True,
-            "frames_total": len(frames),
+            "frames_total": frames_total,
             "frames_unique": len(unique_frames),
             "rows": rows,
             "rows_unique": len(rows),
@@ -859,21 +946,26 @@ async def parse_video_firestore(
 
         await save_uploadfile_limited(file, tmp_path, MAX_VIDEO_BYTES)
 
-        frames = iter_sampled_frames(tmp_path, target_fps=target_fps, crop=crop_tuple)
-        unique_frames = keep_unique_frames(frames, dist_threshold=dist_threshold, compare_to=compare_to)
+        unique_frames, frames_total = keep_unique_frames(
+            iter_sampled_frames(tmp_path, target_fps=target_fps, crop=crop_tuple),
+            dist_threshold=dist_threshold,
+            compare_to=compare_to,
+        )
 
-        tasks = [
-            parse_one_image_async(img, source_name=f"{file.filename or 'video'}#frame{idx}")
-            for idx, img in enumerate(unique_frames)
-        ]
-        parsed_list = await asyncio.gather(*tasks) if tasks else []
+        parsed_list = []
+        for idx, img in enumerate(unique_frames):
+            try:
+                parsed = await parse_one_image_async(img, source_name=f"{file.filename or 'video'}#frame{idx}")
+                parsed_list.append(parsed)
+            finally:
+                img.close()
 
         parsed_unique = dedupe_keep_best(parsed_list)
         rows = [to_firestore_json(p, owner_id=ownerId) for p in parsed_unique]
 
         return {
             "ok": True,
-            "frames_total": len(frames),
+            "frames_total": frames_total,
             "frames_unique": len(unique_frames),
             "rows": rows,
             "rows_unique": len(rows),
