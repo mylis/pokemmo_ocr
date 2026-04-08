@@ -904,8 +904,15 @@
 
     function genderCsvValue(gender) {
         var g = String(gender || "").trim().toLowerCase();
-        if (g === "male") return "male";
-        if (g === "female") return "female";
+        if (g === "male") return "Male";
+        if (g === "female") return "Female";
+        return "";
+    }
+
+    function genderPokePasteSuffix(gender) {
+        var g = String(gender || "").trim().toLowerCase();
+        if (g === "male") return " (M)";
+        if (g === "female") return " (F)";
         return "";
     }
 
@@ -919,7 +926,8 @@
 
         var item = (r.item && String(r.item).trim()) ? (" @ " + r.item) : "";
         var lines = [];
-        lines.push((nick + item).trim());
+        var genderSuffix = otsEnabled ? "" : genderPokePasteSuffix(r.gender);
+        lines.push((nick + genderSuffix + item).trim());
 
         if (r.ability) lines.push("Ability: " + r.ability);
         if (r.level) lines.push("Level: " + r.level);
