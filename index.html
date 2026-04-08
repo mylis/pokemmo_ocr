@@ -65,7 +65,7 @@
 
                 <!-- 1) Input -->
                 <label class="btn btn-primary">
-    Upload screenshots / video
+    Upload screenshots / videos
     <input id="fileInput" type="file" accept="image/*,video/*" multiple hidden />
   </label>
 
@@ -107,7 +107,7 @@
         <!-- Dropzone -->
         <div id="drop" tabindex="0" class="dropzone">
             <div style="font-weight:500; font-size:.9rem;">
-                Drag & drop screenshots <span style="color:rgba(226,232,240,.55)">or</span> 1 video here
+                Drag & drop screenshots <span style="color:rgba(226,232,240,.55)">and/or</span> videos here
             </div>
             <div style="margin-top:.25rem; font-size:.75rem; color:rgba(226,232,240,.65);">
                 Or <strong>paste</strong> a screenshot from your clipboard (<span style="font-family:ui-monospace, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;">Ctrl/Cmd + V</span>).
@@ -117,12 +117,11 @@
                 <div class="drop-hint">
                     <div class="title">✅ Allowed</div>
                     <div>Multiple images (PNG/JPG/WebP)</div>
-                    <div>One video (MP4/WebM/MOV)</div>
+                    <div>Multiple videos (MP4/WebM/MOV)</div>
                 </div>
 
                 <div class="drop-hint">
                     <div class="title">❌ Not allowed</div>
-                    <div>Mixing images + video</div>
                     <div>ZIP / folders / PDFs</div>
                 </div>
 
@@ -431,7 +430,7 @@
                     <div>
                         <div class="modal-title">Expected formats (Screenshot & Video)</div>
                         <div class="modal-sub">
-                            Upload <strong>multiple screenshots</strong> or <strong>one video</strong>. Don’t mix.
+                            Upload <strong>screenshots</strong>, <strong>videos</strong>, or a <strong>mix of both</strong>.
                         </div>
                     </div>
                     <button id="closeExampleBtn" class="btn btn-xs" aria-label="Close">✕</button>
@@ -483,7 +482,7 @@
                                         Video: what to record
                                     </div>
                                     <div style="font-size:11px; color:rgba(226,232,240,.55);">
-                                        MP4/WebM/MOV • 1 video per upload
+                                        MP4/WebM/MOV • multiple videos supported
                                     </div>
                                 </div>
 
@@ -525,7 +524,6 @@
                                         <li>Don’t include <strong>chat windows</strong> or UI overlays</li>
                                         <li>Don’t crop too tightly <span style="color:rgba(226,232,240,.55)">(leave UI context)</span></li>
                                         <li>Don’t upload <strong>ZIP/PDF</strong> <span style="color:rgba(226,232,240,.55)">(images/video only)</span></li>
-                                        <li>Don’t upload <strong>screenshots + video together</strong></li>
                                     </ul>
                                 </div>
 

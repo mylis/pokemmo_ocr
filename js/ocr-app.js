@@ -283,9 +283,6 @@
 
             var files = filesFromDrop(e);
             if (!files.length) return;
-
-            var t = selectionType(files);
-            if (t === "mixed") return setStatus("Please upload either screenshots OR one video, not both at once.");
             processFiles(files, (lastMode === "firestore") ? "firestore" : "parse");
         });
     }
@@ -297,12 +294,6 @@
         fileInput.addEventListener("change", function() {
             var files = Array.from(fileInput.files || []);
             if (!files.length) return;
-
-            var t = selectionType(files);
-            if (t === "mixed") {
-                setStatus("Please upload either screenshots OR one video (not both).");
-                return;
-            }
 
             var mode = (lastMode === "firestore") ? "firestore" : "parse";
             setStatus("Processing " + files.length + " file(s)…");
@@ -368,7 +359,7 @@
             cancelRequested = true;
             btnCancel.disabled = true;
             btnCancel.textContent = "Cancelling…";
-            setStatus("Cancelling… finishing current image.");
+            setStatus("Cancelling… finishing current file.");
         });
     }
 
@@ -377,12 +368,10 @@
     // -------------------------
     async function processFiles(files, mode) {
         if (!files || !files.length) return;
-
-        var selType = selectionType(files);
-        if (selType === "mixed") {
-            setStatus("Please upload either screenshots OR one video, not both at once.");
-            return;
-        }
+        files = Array.from(files).filter(function(f) {
+            return isImageFile(f) || isVideoFile(f);
+        });
+        if (!files.length) return;
 
         lastMode = mode;
         cancelRequested = false;
@@ -392,65 +381,30 @@
         if (btnCsv) btnCsv.disabled = true;
 
         try {
-            if (selType === "video") {
-                var video = files[0];
-                var endpointVid = (mode === "firestore") ? "/parse_video_firestore" : "/parse_video";
-                var titleBaseVid = (mode === "firestore") ? "Processing video (Firestore)…" : "Processing video…";
-
-                showLoadingWithProgress(titleBaseVid, 0, 1);
-                setStatus(titleBaseVid + " " + video.name);
-
-                var fdVid = new FormData();
-                fdVid.append("file", video);
-
-                var respVid = await fetch(apiBase + endpointVid, { method: "POST", body: fdVid });
-                if (!respVid.ok) {
-                    var txtVid = await respVid.text();
-                    throw new Error("Failed on " + video.name + ": " + respVid.status + " " + txtVid);
-                }
-
-                var dataVid = await respVid.json();
-                var rowsVid = (dataVid && Array.isArray(dataVid.rows)) ? dataVid.rows : [];
-                ensureRowIds(rowsVid);
-
-                var activeVid = getActiveRows(mode).concat(rowsVid);
-                setActiveRows(mode, activeVid);
-
-                if (dataVid && (typeof dataVid.frames_total === "number") && (typeof dataVid.frames_unique === "number")) {
-                    setStatus("Video done. Frames: " + dataVid.frames_unique + " unique / " + dataVid.frames_total + " sampled.");
-                } else {
-                    setStatus("Video done.");
-                }
-
-                if (mode === "firestore") renderFirestore(activeVid);
-                else renderRows(activeVid);
-
-                showLoadingWithProgress(titleBaseVid, 1, 1);
-
-                if (btnCsv) btnCsv.disabled = (mode === "firestore") || (activeVid.length === 0);
-                return;
-            }
-
-            // Images path
-            var endpointImg = (mode === "firestore") ? "/parse_firestore" : "/parse";
-            var titleBaseImg = (mode === "firestore") ? "Processing (Firestore)…" : "Processing screenshots…";
-
             var total = files.length;
             var done = 0;
+            var titleBase = (mode === "firestore") ? "Processing uploads (Firestore)…" : "Processing uploads…";
 
-            showLoadingWithProgress(titleBaseImg, done, total);
-            setStatus(titleBaseImg + " " + total + " file(s)…");
+            showLoadingWithProgress(titleBase, done, total);
+            setStatus(titleBase + " " + total + " file(s)…");
 
             for (var i = 0; i < files.length; i++) {
                 if (cancelRequested) break;
 
                 var f = files[i];
-                showLoadingWithProgress((mode === "firestore" ? "Firestore: " : "Processing: ") + f.name, done, total);
+                var isVid = isVideoFile(f);
+                var endpoint = isVid ?
+                    ((mode === "firestore") ? "/parse_video_firestore" : "/parse_video") :
+                    ((mode === "firestore") ? "/parse_firestore" : "/parse");
+                var kind = isVid ? "video" : "image";
+                var currentTitle = (mode === "firestore" ? "Firestore " : "Processing ") + kind + ": " + f.name;
+                showLoadingWithProgress(currentTitle, done, total);
 
                 var fd = new FormData();
-                fd.append("files", f);
+                if (isVid) fd.append("file", f);
+                else fd.append("files", f);
 
-                var resp = await fetch(apiBase + endpointImg, { method: "POST", body: fd });
+                var resp = await fetch(apiBase + endpoint, { method: "POST", body: fd });
                 if (!resp.ok) {
                     var txt = await resp.text();
                     throw new Error("Failed on " + f.name + ": " + resp.status + " " + txt);
@@ -468,8 +422,15 @@
                 else renderRows(active);
 
                 done++;
-                showLoadingWithProgress(titleBaseImg, done, total);
-                setStatus("Processed " + done + " / " + total + "…");
+                showLoadingWithProgress(titleBase, done, total);
+                if (isVid && data && (typeof data.frames_total === "number") && (typeof data.frames_unique === "number")) {
+                    setStatus(
+                        "Processed " + done + " / " + total + " file(s). " +
+                        f.name + ": " + data.frames_unique + " unique / " + data.frames_total + " sampled."
+                    );
+                } else {
+                    setStatus("Processed " + done + " / " + total + " file(s)…");
+                }
             }
 
             if (cancelRequested) setStatus("Cancelled. Processed " + done + " / " + total + " file(s).");
