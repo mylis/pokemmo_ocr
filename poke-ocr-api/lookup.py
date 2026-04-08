@@ -70,11 +70,16 @@ class CanonicalLookups:
         # NEW: canonical pokemon name -> dex id
         # Assumes monsters.json has fields like { "id": 1, "name": "Bulbasaur", ... }
         self.pokemon_name_to_id: dict[str, int] = {}
+        self.pokemon_name_to_gender_ratio: dict[str, int] = {}
         for m in monsters:
             name = m.get("name")
             mid = m.get("id")
             if name and isinstance(mid, int):
-                self.pokemon_name_to_id[norm_key(name)] = mid
+                key = norm_key(name)
+                self.pokemon_name_to_id[key] = mid
+                ratio = m.get("gender_ratio")
+                if isinstance(ratio, int):
+                    self.pokemon_name_to_gender_ratio[key] = ratio
 
         # Collect abilities from monsters
         abil = set()
@@ -91,6 +96,17 @@ class CanonicalLookups:
         """
         k = norm_key(pokemon_name)
         return self.pokemon_name_to_id.get(k)
+
+    def get_gender_ratio(self, pokemon_name: str):
+        """
+        Returns the game's stored gender ratio for a species, or None if unknown.
+        Common values:
+        - 255: genderless
+        - 0: male-only
+        - 254: female-only
+        """
+        k = norm_key(pokemon_name)
+        return self.pokemon_name_to_gender_ratio.get(k)
 
     def canonicalize(self, rec: dict) -> dict:
         # Pokemon

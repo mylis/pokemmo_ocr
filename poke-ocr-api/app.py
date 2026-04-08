@@ -166,6 +166,156 @@ def _has_component(mask: np.ndarray, area_min: int, area_max: int) -> bool:
     return False
 
 
+def _largest_component_area(mask: np.ndarray, area_min: int, area_max: int) -> int:
+    num, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
+    best = 0
+    for i in range(1, num):
+        area = int(stats[i, cv2.CC_STAT_AREA])
+        if area_min <= area <= area_max:
+            best = max(best, area)
+    return best
+
+
+def _best_component_score(
+    mask: np.ndarray,
+    area_min: int,
+    area_max: int,
+    width_min: int,
+    width_max: int,
+    height_min: int,
+    height_max: int,
+    border_pad: int = 0,
+) -> int:
+    h, w = mask.shape[:2]
+    num, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
+    best = 0
+
+    for i in range(1, num):
+        x = int(stats[i, cv2.CC_STAT_LEFT])
+        y = int(stats[i, cv2.CC_STAT_TOP])
+        cw = int(stats[i, cv2.CC_STAT_WIDTH])
+        ch = int(stats[i, cv2.CC_STAT_HEIGHT])
+        area = int(stats[i, cv2.CC_STAT_AREA])
+
+        if not (area_min <= area <= area_max):
+            continue
+        if not (width_min <= cw <= width_max):
+            continue
+        if not (height_min <= ch <= height_max):
+            continue
+        if border_pad > 0:
+            if x <= border_pad or y <= border_pad:
+                continue
+            if (x + cw) >= (w - border_pad) or (y + ch) >= (h - border_pad):
+                continue
+
+        best = max(best, area)
+
+    return best
+
+
+def _sum_component_area(
+    mask: np.ndarray,
+    area_min: int,
+    area_max: int,
+    width_min: int,
+    width_max: int,
+    height_min: int,
+    height_max: int,
+    border_pad: int = 0,
+) -> int:
+    h, w = mask.shape[:2]
+    num, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
+    total = 0
+
+    for i in range(1, num):
+        x = int(stats[i, cv2.CC_STAT_LEFT])
+        y = int(stats[i, cv2.CC_STAT_TOP])
+        cw = int(stats[i, cv2.CC_STAT_WIDTH])
+        ch = int(stats[i, cv2.CC_STAT_HEIGHT])
+        area = int(stats[i, cv2.CC_STAT_AREA])
+
+        if not (area_min <= area <= area_max):
+            continue
+        if not (width_min <= cw <= width_max):
+            continue
+        if not (height_min <= ch <= height_max):
+            continue
+        if border_pad > 0:
+            if x <= border_pad or y <= border_pad:
+                continue
+            if (x + cw) >= (w - border_pad) or (y + ch) >= (h - border_pad):
+                continue
+
+        total += area
+
+    return total
+
+
+def _classify_gender_components(
+    hsv: np.ndarray,
+    area_min: int,
+    area_max: int,
+    width_min: int,
+    width_max: int,
+    height_min: int,
+    height_max: int,
+    border_pad: int = 0,
+) -> tuple[int, int]:
+    """
+    Fallback classifier:
+    - find any small colorful connected component in the ROI
+    - classify by its average hue
+    This is more tolerant when the icon is dim and narrow hue masks miss it.
+    """
+    h, w = hsv.shape[:2]
+    sat = hsv[:, :, 1]
+    val = hsv[:, :, 2]
+    colorful = ((sat >= 25) & (val >= 20)).astype(np.uint8) * 255
+
+    num, labels, stats, _ = cv2.connectedComponentsWithStats(colorful, connectivity=8)
+    male_score = 0
+    female_score = 0
+
+    for i in range(1, num):
+        x = int(stats[i, cv2.CC_STAT_LEFT])
+        y = int(stats[i, cv2.CC_STAT_TOP])
+        cw = int(stats[i, cv2.CC_STAT_WIDTH])
+        ch = int(stats[i, cv2.CC_STAT_HEIGHT])
+        area = int(stats[i, cv2.CC_STAT_AREA])
+
+        if not (area_min <= area <= area_max):
+            continue
+        if not (width_min <= cw <= width_max):
+            continue
+        if not (height_min <= ch <= height_max):
+            continue
+        if border_pad > 0:
+            if x <= border_pad or y <= border_pad:
+                continue
+            if (x + cw) >= (w - border_pad) or (y + ch) >= (h - border_pad):
+                continue
+
+        comp_mask = labels[y:y + ch, x:x + cw] == i
+        comp_h = hsv[y:y + ch, x:x + cw, 0][comp_mask]
+        comp_s = hsv[y:y + ch, x:x + cw, 1][comp_mask]
+        comp_v = hsv[y:y + ch, x:x + cw, 2][comp_mask]
+        if comp_h.size == 0:
+            continue
+
+        mean_h = float(np.mean(comp_h))
+        mean_s = float(np.mean(comp_s))
+        mean_v = float(np.mean(comp_v))
+        score = area + int(mean_s * 0.5) + int(mean_v * 0.25)
+
+        if 90 <= mean_h <= 125:
+            male_score = max(male_score, score)
+        elif 140 <= mean_h <= 179:
+            female_score = max(female_score, score)
+
+    return male_score, female_score
+
+
 def _safe_cuda_stats() -> dict:
     if not USE_GPU or torch is None or not torch.cuda.is_available():
         return {"enabled": False}
@@ -200,15 +350,112 @@ def _cleanup_cuda_cache(force: bool = False) -> None:
             torch.cuda.ipc_collect()
 
 
-def _run_easyocr(prep: np.ndarray):
+def _run_easyocr(prep: np.ndarray, **kwargs):
     if USE_GPU and torch is not None:
         with torch.inference_mode():
             if gpu_reader_lock is not None:
                 with gpu_reader_lock:
-                    return reader.readtext(prep, detail=1, paragraph=False)
-            return reader.readtext(prep, detail=1, paragraph=False)
+                    return reader.readtext(prep, detail=1, paragraph=False, **kwargs)
+            return reader.readtext(prep, detail=1, paragraph=False, **kwargs)
 
-    return reader.readtext(prep, detail=1, paragraph=False)
+    return reader.readtext(prep, detail=1, paragraph=False, **kwargs)
+
+
+def _binary_template(rows: list[str]) -> np.ndarray:
+    return np.array([[1 if ch == "#" else 0 for ch in row] for row in rows], dtype=np.uint8)
+
+
+GENDER_TEMPLATE_MALE = _binary_template([
+    ".........####.........",
+    "........######........",
+    "........######........",
+    "........######........",
+    ".....############.....",
+    "....##############....",
+    "....##############....",
+    "....##############....",
+    ".####################.",
+    "######################",
+    "######..######..######",
+    "######..######..######",
+    "######..######..######",
+    ".####...######...####.",
+    "........######........",
+    "........######........",
+    ".....############.....",
+    "....##############....",
+    "....##############....",
+    "....##############....",
+    ".####################.",
+    "######################",
+    "##########..##########",
+    "##########..##########",
+    "##########..##########",
+    "#########....#########",
+    "######..........######",
+    "######..........######",
+    "#########....#########",
+    "##########..##########",
+    "##########..##########",
+    "##########..##########",
+    "######################",
+    ".####################.",
+    "....##############....",
+    "....##############....",
+    "....##############....",
+    ".....############.....",
+])
+
+GENDER_TEMPLATE_FEMALE = _binary_template([
+    ".....############.....",
+    "....##############....",
+    "....##############....",
+    "....##############....",
+    ".####################.",
+    "######################",
+    "##########..##########",
+    "##########..##########",
+    "##########..##########",
+    "#########....#########",
+    "######..........######",
+    "######..........######",
+    "#########....#########",
+    "##########..##########",
+    "##########..##########",
+    "##########..##########",
+    "######################",
+    ".####################.",
+    "....##############....",
+    "....##############....",
+    "....##############....",
+    ".....############.....",
+    "........######........",
+    "........######........",
+    ".####################.",
+    "######################",
+    "######################",
+    "######################",
+    "######################",
+    ".####################.",
+    "........######........",
+    "........######........",
+    "........######........",
+    "........######........",
+    "........######........",
+    "........######........",
+    "........######........",
+    ".........####.........",
+])
+
+
+def _mask_iou(a: np.ndarray, b: np.ndarray) -> float:
+    a = a.astype(bool)
+    b = b.astype(bool)
+    union = np.logical_or(a, b).sum()
+    if union <= 0:
+        return 0.0
+    inter = np.logical_and(a, b).sum()
+    return float(inter) / float(union)
 
 
 # -----------------------------
@@ -265,6 +512,484 @@ def _bbox_right_x(bbox) -> float:
 def _bbox_height(bbox) -> float:
     ys = [p[1] for p in bbox]
     return float(max(ys) - min(ys))
+
+
+def _level_token_tail(text: str) -> str:
+    t = ascii_only(text or "").replace("|", "l")
+    t = re.sub(r"^\s*l[vwiao1l]{1,3}\.?\s*\d+\s*", "", t, flags=re.IGNORECASE)
+    t = re.sub(r"[^A-Za-z' \-]", " ", t)
+    t = re.sub(r"\s+", " ", t).strip()
+    return t
+
+
+def _nameish_row_text(text: str) -> str:
+    t = ascii_only(text or "").replace("|", "l")
+    tail = _level_token_tail(t)
+    if re.search(r"[A-Za-z]{2,}", tail):
+        return tail
+
+    t = re.sub(r"[^A-Za-z' \-]", " ", t)
+    t = re.sub(r"\s+", " ", t).strip()
+    if re.fullmatch(r"l[vwiao1l]{1,3}", t, flags=re.IGNORECASE):
+        return ""
+    if re.fullmatch(r"l[vwiao1l]{1,3}\s*\d*", t, flags=re.IGNORECASE):
+        return ""
+    return t if re.search(r"[A-Za-z]{2,}", t) else ""
+
+
+def detect_name_end_from_pixels(
+    img_bgr: np.ndarray,
+    row_y: float,
+    row_tol: float,
+    level_right: float,
+) -> int:
+    """
+    Fallback anchor when OCR misses the species token:
+    detect the right edge of the bright white name text on the same row.
+    """
+    h, w = img_bgr.shape[:2]
+    y1 = int(np.clip(row_y - row_tol * 0.75, 0, h - 1))
+    y2 = int(np.clip(row_y + row_tol * 0.75, 0, h))
+    x1 = int(np.clip(level_right + 6, 0, w - 1))
+    x2 = int(np.clip(min(level_right + 130, w * 0.90), 0, w))
+    if x2 <= x1 + 5 or y2 <= y1 + 5:
+        return int(level_right)
+
+    roi = img_bgr[y1:y2, x1:x2]
+    hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
+
+    # White text: high value, low saturation.
+    mask = cv2.inRange(
+        hsv,
+        np.array([0, 0, 150], dtype=np.uint8),
+        np.array([179, 70, 255], dtype=np.uint8),
+    )
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((2, 2), np.uint8), iterations=1)
+
+    # Join letters and small spaces so the species name becomes one horizontal run.
+    col_mask = (np.count_nonzero(mask > 0, axis=0) >= 2).astype(np.uint8)[None, :] * 255
+    col_mask = cv2.morphologyEx(col_mask, cv2.MORPH_CLOSE, np.ones((1, 17), np.uint8), iterations=1)
+    active_cols = np.where(col_mask[0] > 0)[0]
+    if active_cols.size == 0:
+        return int(level_right)
+
+    runs = []
+    start = int(active_cols[0])
+    prev = start
+    for idx in active_cols[1:]:
+        idx = int(idx)
+        if idx <= prev + 1:
+            prev = idx
+            continue
+        runs.append((start, prev))
+        start = idx
+        prev = idx
+    runs.append((start, prev))
+
+    best_right = int(level_right)
+    best_width = 0
+    for run_start, run_end in runs:
+        width = run_end - run_start + 1
+        if width < 16:
+            continue
+        if run_start > 110:
+            continue
+        abs_right = x1 + run_end + 1
+        if abs_right > best_right or width > best_width:
+            best_right = abs_right
+            best_width = width
+
+    return best_right if best_right > int(level_right) else int(level_right)
+
+
+def detect_name_row_from_pixels(
+    img_bgr: np.ndarray,
+    row_y: float,
+    row_tol: float,
+    level_right: float,
+) -> tuple[float, dict]:
+    """
+    Refine the y-position of the "Lv. <n> Name" row from bright white text pixels.
+    This helps when OCR's bbox for the level token sits too low/high relative to the
+    actual symbol.
+    """
+    h, w = img_bgr.shape[:2]
+    y1 = int(np.clip(row_y - row_tol * 1.4, 0, h - 1))
+    y2 = int(np.clip(row_y + row_tol * 1.4, 0, h))
+    x1 = int(np.clip(level_right + 4, 0, w - 1))
+    x2 = int(np.clip(level_right + 220, 0, w))
+    debug = {"search": [x1, y1, x2, y2], "refined_row_y": int(row_y)}
+
+    if x2 <= x1 + 5 or y2 <= y1 + 5:
+        return row_y, debug
+
+    roi = img_bgr[y1:y2, x1:x2]
+    hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
+    mask = cv2.inRange(
+        hsv,
+        np.array([0, 0, 150], dtype=np.uint8),
+        np.array([179, 80, 255], dtype=np.uint8),
+    )
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((2, 2), np.uint8), iterations=1)
+
+    ys, xs = np.where(mask > 0)
+    if ys.size == 0:
+        return row_y, debug
+
+    hist = np.bincount(ys, minlength=mask.shape[0])
+    best_y = int(np.argmax(hist))
+    refined = float(y1 + best_y)
+    debug["refined_row_y"] = int(refined)
+    return refined, debug
+
+
+def detect_gender_symbol_box(
+    img_bgr: np.ndarray,
+    row_y: float,
+    row_tol: float,
+    level_right: float,
+) -> tuple[Optional[tuple[int, int, int, int]], Optional[str], dict]:
+    """
+    Find the first plausible colored gender symbol to the right of the level text.
+    Returns (bbox, label, debug) where bbox is (x1, y1, x2, y2) in image coords.
+    """
+    h, w = img_bgr.shape[:2]
+    # Keep the search tightly centered on the level/name row.
+    y1 = int(np.clip(row_y - row_tol * 0.80, 0, h - 1))
+    y2 = int(np.clip(row_y + row_tol * 0.80, 0, h))
+    x1 = int(np.clip(level_right + 18, 0, w - 1))
+    x2 = int(np.clip(level_right + 150, 0, w))
+    debug = {"search": [x1, y1, x2, y2], "picked": None, "picked_label": None}
+
+    if x2 <= x1 + 5 or y2 <= y1 + 5:
+        return None, None, debug
+
+    roi = img_bgr[y1:y2, x1:x2]
+    hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
+    hch, sch, vch = hsv[:, :, 0], hsv[:, :, 1], hsv[:, :, 2]
+
+    colorful = (
+        (((hch >= 90) & (hch <= 125)) | ((hch >= 140) & (hch <= 179))) &
+        (sch >= 15) &
+        (vch >= 15)
+    ).astype(np.uint8) * 255
+    colorful = cv2.morphologyEx(colorful, cv2.MORPH_OPEN, np.ones((2, 2), np.uint8), iterations=1)
+
+    num, labels, stats, _ = cv2.connectedComponentsWithStats(colorful, connectivity=8)
+    candidates = []
+    for i in range(1, num):
+        cx = int(stats[i, cv2.CC_STAT_LEFT])
+        cy = int(stats[i, cv2.CC_STAT_TOP])
+        cw = int(stats[i, cv2.CC_STAT_WIDTH])
+        ch = int(stats[i, cv2.CC_STAT_HEIGHT])
+        area = int(stats[i, cv2.CC_STAT_AREA])
+        if area < 8 or area > 1500:
+            continue
+        if cw < 3 or cw > 40 or ch < 8 or ch > 64:
+            continue
+
+        comp_mask = labels[cy:cy + ch, cx:cx + cw] == i
+        comp_h = hch[cy:cy + ch, cx:cx + cw][comp_mask]
+        comp_s = sch[cy:cy + ch, cx:cx + cw][comp_mask]
+        comp_v = vch[cy:cy + ch, cx:cx + cw][comp_mask]
+        if comp_h.size == 0:
+            continue
+
+        colorful_mask = (comp_s >= 20) & (comp_v >= 20)
+        if not np.any(colorful_mask):
+            continue
+        colorful_h = comp_h[colorful_mask]
+
+        male_hits = int(np.sum((colorful_h >= 92) & (colorful_h <= 125)))
+        female_hits = int(np.sum((colorful_h >= 145) & (colorful_h <= 179)))
+        total_hits = int(colorful_h.size)
+        if total_hits == 0:
+            continue
+
+        label = None
+        strength = 0
+        if male_hits >= 8 and male_hits >= int(total_hits * 0.55) and male_hits > female_hits * 1.5:
+            label = "male"
+            strength = male_hits
+        elif female_hits >= 8 and female_hits >= int(total_hits * 0.55) and female_hits > male_hits * 1.5:
+            label = "female"
+            strength = female_hits
+        if not label:
+            continue
+
+        abs_x1 = x1 + cx
+        abs_y1 = y1 + cy
+        abs_x2 = x1 + cx + cw
+        abs_y2 = y1 + cy + ch
+        center_y = abs_y1 + (ch / 2.0)
+        y_dist = abs(center_y - row_y)
+
+        # Prefer components close to the row center first, then farther-left ones.
+        candidates.append((y_dist, abs_x1, -strength, -area, label, (abs_x1, abs_y1, abs_x2, abs_y2)))
+
+    if not candidates:
+        return None, None, debug
+
+    candidates.sort()
+    _, _, _, _, label, box = candidates[0]
+    debug["picked"] = list(box)
+    debug["picked_label"] = label
+    return box, label, debug
+
+
+def detect_gender_fixed_roi(img_bgr: np.ndarray) -> tuple[str, dict]:
+    """
+    Layout-based fallback:
+    in the provided PokeMMO summary screenshots, the gender glyph sits in a narrow
+    band near the lower-middle right of the sprite panel, beside the Pokemon name.
+    """
+    h, w = img_bgr.shape[:2]
+    x1 = int(np.clip(w * 0.72, 0, w - 1))
+    x2 = int(np.clip(w * 0.92, 0, w))
+    y1 = int(np.clip(h * 0.27, 0, h - 1))
+    y2 = int(np.clip(h * 0.39, 0, h))
+    debug = {
+        "roi": [x1, y1, x2, y2],
+        "male": 0,
+        "female": 0,
+        "result": "unknown",
+    }
+
+    if x2 <= x1 + 5 or y2 <= y1 + 5:
+        return "unknown", debug
+
+    roi = img_bgr[y1:y2, x1:x2]
+    hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
+    male_score, female_score = _classify_gender_components(
+        hsv,
+        area_min=8,
+        area_max=1200,
+        width_min=3,
+        width_max=36,
+        height_min=8,
+        height_max=52,
+        border_pad=1,
+    )
+    debug["male"] = int(male_score)
+    debug["female"] = int(female_score)
+
+    if male_score >= 60 and male_score > female_score * 1.5:
+        debug["result"] = "male"
+        return "male", debug
+    if female_score >= 60 and female_score > male_score * 1.5:
+        debug["result"] = "female"
+        return "female", debug
+    return "unknown", debug
+
+
+def detect_gender_via_ocr(
+    img_bgr: np.ndarray,
+    x1: int,
+    y1: int,
+    x2: int,
+    y2: int,
+) -> tuple[str, dict]:
+    debug = {
+        "crop": [int(x1), int(y1), int(x2), int(y2)],
+        "texts": [],
+        "result": "unknown",
+    }
+
+    h, w = img_bgr.shape[:2]
+    x1 = int(np.clip(x1, 0, w - 1))
+    x2 = int(np.clip(x2, 0, w))
+    y1 = int(np.clip(y1, 0, h - 1))
+    y2 = int(np.clip(y2, 0, h))
+
+    if x2 <= x1 + 3 or y2 <= y1 + 3:
+        return "unknown", debug
+
+    roi = img_bgr[y1:y2, x1:x2]
+    gray_base = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+    gray_base = cv2.resize(gray_base, None, fx=4, fy=4, interpolation=cv2.INTER_CUBIC)
+    gray_base = cv2.GaussianBlur(gray_base, (3, 3), 0)
+
+    variants = []
+    gray = cv2.convertScaleAbs(gray_base, alpha=2.4, beta=0)
+    variants.append(gray)
+
+    _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    variants.append(binary)
+    variants.append(cv2.bitwise_not(binary))
+
+    ocr_results = []
+    for variant in variants:
+        try:
+            got = _run_easyocr(
+                variant,
+                allowlist="♂♀",
+                low_text=0.05,
+                text_threshold=0.2,
+                link_threshold=0.05,
+            )
+        except Exception:
+            got = []
+        if got:
+            ocr_results.extend(got)
+
+    texts = []
+    for item in ocr_results or []:
+        if isinstance(item, (list, tuple)) and len(item) >= 3:
+            texts.append({"text": str(item[1] or ""), "conf": float(item[2] or 0.0)})
+    debug["texts"] = texts
+
+    joined = "".join(t["text"] for t in texts)
+    if "♂" in joined:
+        debug["result"] = "male"
+        return "male", debug
+    if "♀" in joined:
+        debug["result"] = "female"
+        return "female", debug
+    return "unknown", debug
+
+
+def detect_gender_icon_generic(img_bgr: np.ndarray, species_name: str = "") -> tuple[str, dict]:
+    """
+    Layout/template-based detector tuned from the provided sample screenshots.
+    The gender icon lives in a stable band of the summary panel, so we search a
+    fixed ROI and compare small colored components to the known male/female glyphs.
+    """
+    h, w = img_bgr.shape[:2]
+    gender_ratio = lookups.get_gender_ratio(species_name) if species_name else None
+    search_x1 = int(np.clip(w * 0.55, 0, w - 1))
+    search_x2 = int(np.clip(w * 0.92, 0, w))
+    search_y1 = int(np.clip(h * 0.34, 0, h - 1))
+    search_y2 = int(np.clip(h * 0.47, 0, h))
+
+    debug_info = {
+        "result": "unknown",
+        "species": species_name or "",
+        "gender_ratio": gender_ratio,
+        "level_found": False,
+        "row_token_count": 0,
+        "row_right": 0,
+        "level_right": 0,
+        "name_anchor_right": 0,
+        "pixel_anchor_right": 0,
+        "anchor_source": "fixed_template",
+        "roi_primary": [search_x1, search_y1, search_x2, search_y2],
+        "roi_fallback": None,
+        "primary_scores": {"male": 0, "female": 0},
+        "fallback_scores": {"male": 0, "female": 0},
+        "used_fallback": False,
+        "ocr": {"texts": []},
+        "symbol_search": {"search": [search_x1, search_y1, search_x2, search_y2], "picked": None, "picked_label": None},
+        "row_refine": {"search": [search_x1, search_y1, search_x2, search_y2], "refined_row_y": int((search_y1 + search_y2) / 2)},
+        "fixed_roi": {"roi": [search_x1, search_y1, search_x2, search_y2], "male": 0, "female": 0, "candidate_count": 0},
+    }
+
+    if gender_ratio == 255:
+        debug_info["anchor_source"] = "species_genderless"
+        return "unknown", debug_info
+    if gender_ratio == 0:
+        debug_info["result"] = "male"
+        debug_info["anchor_source"] = "species_ratio"
+        return "male", debug_info
+    if gender_ratio == 254:
+        debug_info["result"] = "female"
+        debug_info["anchor_source"] = "species_ratio"
+        return "female", debug_info
+
+    if search_x2 <= search_x1 + 5 or search_y2 <= search_y1 + 5:
+        return "unknown", debug_info
+
+    roi = img_bgr[search_y1:search_y2, search_x1:search_x2]
+    hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
+    male_mask = cv2.inRange(
+        hsv,
+        np.array([90, 35, 60], dtype=np.uint8),
+        np.array([122, 255, 255], dtype=np.uint8),
+    )
+    female_mask = cv2.inRange(
+        hsv,
+        np.array([140, 35, 60], dtype=np.uint8),
+        np.array([179, 255, 255], dtype=np.uint8),
+    )
+    union = cv2.bitwise_or(male_mask, female_mask)
+    union = cv2.morphologyEx(union, cv2.MORPH_OPEN, np.ones((2, 2), np.uint8), iterations=1)
+
+    num, labels, stats, _ = cv2.connectedComponentsWithStats(union, connectivity=8)
+    candidates = []
+    for i in range(1, num):
+        cx = int(stats[i, cv2.CC_STAT_LEFT])
+        cy = int(stats[i, cv2.CC_STAT_TOP])
+        cw = int(stats[i, cv2.CC_STAT_WIDTH])
+        ch = int(stats[i, cv2.CC_STAT_HEIGHT])
+        area = int(stats[i, cv2.CC_STAT_AREA])
+        if area < 250 or area > 900:
+            continue
+        if cw < 16 or cw > 28 or ch < 28 or ch > 48:
+            continue
+        if cx <= 0 or cy <= 0 or (cx + cw) >= (roi.shape[1] - 1) or (cy + ch) >= (roi.shape[0] - 1):
+            continue
+
+        comp = (labels[cy:cy + ch, cx:cx + cw] == i).astype(np.uint8)
+        comp_resized = cv2.resize(
+            comp,
+            (GENDER_TEMPLATE_MALE.shape[1], GENDER_TEMPLATE_MALE.shape[0]),
+            interpolation=cv2.INTER_NEAREST,
+        )
+
+        male_iou = _mask_iou(comp_resized, GENDER_TEMPLATE_MALE)
+        female_iou = _mask_iou(comp_resized, GENDER_TEMPLATE_FEMALE)
+        male_hits = int(np.count_nonzero(male_mask[cy:cy + ch, cx:cx + cw][comp > 0]))
+        female_hits = int(np.count_nonzero(female_mask[cy:cy + ch, cx:cx + cw][comp > 0]))
+
+        abs_box = [search_x1 + cx, search_y1 + cy, search_x1 + cx + cw, search_y1 + cy + ch]
+        label = "male" if male_iou >= female_iou else "female"
+        score = male_iou if label == "male" else female_iou
+        hue_hits = male_hits if label == "male" else female_hits
+        opposite_hits = female_hits if label == "male" else male_hits
+
+        candidates.append({
+            "label": label,
+            "score": float(score),
+            "male_iou": float(male_iou),
+            "female_iou": float(female_iou),
+            "male_hits": male_hits,
+            "female_hits": female_hits,
+            "hue_hits": hue_hits,
+            "opposite_hits": opposite_hits,
+            "box": abs_box,
+            "x": abs_box[0],
+            "area": area,
+        })
+
+    debug_info["fixed_roi"]["candidate_count"] = len(candidates)
+    if not candidates:
+        return "unknown", debug_info
+
+    candidates.sort(key=lambda c: (-c["score"], c["x"]))
+    best = candidates[0]
+    debug_info["primary_scores"] = {
+        "male": int(round(best["male_iou"] * 100)),
+        "female": int(round(best["female_iou"] * 100)),
+    }
+    debug_info["fixed_roi"]["male"] = int(round(best["male_iou"] * 100))
+    debug_info["fixed_roi"]["female"] = int(round(best["female_iou"] * 100))
+    debug_info["symbol_search"] = {
+        "search": [search_x1, search_y1, search_x2, search_y2],
+        "picked": best["box"],
+        "picked_label": best["label"],
+    }
+    debug_info["name_anchor_right"] = int(best["box"][2])
+    debug_info["pixel_anchor_right"] = int(best["box"][2])
+
+    best_label = best["label"]
+    best_score = best["score"]
+    best_hits = best["hue_hits"]
+    opposite_hits = best["opposite_hits"]
+
+    if best_score >= 0.82 and best_hits >= max(180, opposite_hits * 2):
+        debug_info["result"] = best_label
+        return best_label, debug_info
+
+    return "unknown", debug_info
 
 def detect_hidden_ability_diamond_generic(img_bgr: np.ndarray, ocr_results) -> bool:
     """
@@ -508,7 +1233,7 @@ def to_firestore_json(parsed: dict, owner_id: str = "") -> dict:
         "notes": "",
         "shiny": bool(parsed.get("shiny", False)),
         "encounters": 0,
-        "gender": "unknown",
+        "gender": parsed.get("gender") or "unknown",
         "form": "",
         "secretShiny": None,
         "encounterType": "",
@@ -545,9 +1270,12 @@ def parse_one_image_pil(img: Image.Image, source_name: str = "") -> dict:
     _cleanup_cuda_cache()
 
     parsed["ha"] = bool(detect_hidden_ability_diamond_generic(img_bgr_big, results))
-
     parsed.update(parse_easyocr_results(results, conf_min=0.60))
     parsed = lookups.canonicalize(parsed)
+    gender, gender_debug = detect_gender_icon_generic(img_bgr_big, parsed.get("pokemon", ""))
+    parsed["gender"] = gender
+    parsed.setdefault("debug", {})
+    parsed["debug"]["gender_detection"] = gender_debug
     parsed["item"] = ascii_only(parsed.get("item", ""))
 
     m1, m2, m3, m4 = pick_moves(parsed, lookups.moves)
@@ -695,6 +1423,7 @@ def parsed_signature(parsed: dict) -> tuple:
         norm_str(parsed.get("nature")),
         norm_str(parsed.get("ability")),
         norm_str(parsed.get("item")),
+        norm_str(parsed.get("gender")),
 
         norm_int(parsed.get("ev_hp")),
         norm_int(parsed.get("ev_atk")),
@@ -733,6 +1462,7 @@ def mon_identity_key(parsed: dict) -> tuple:
         ns(parsed.get("pokemon")),
         ni(parsed.get("level")),
         ns(parsed.get("nature")),
+        ns(parsed.get("gender")),
         1 if parsed.get("shiny") else 0,
         1 if parsed.get("alpha") else 0,
         1 if parsed.get("ha") else 0,
@@ -763,6 +1493,7 @@ def parsed_quality_score(parsed: dict) -> int:
     score += 2 if parsed.get("shiny") else 0
     score += 2 if parsed.get("alpha") else 0
     score += 2 if parsed.get("ha") else 0
+    score += 1 if (parsed.get("gender") or "").strip().lower() in {"male", "female"} else 0
 
     return score
 

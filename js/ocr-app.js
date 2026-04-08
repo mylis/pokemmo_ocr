@@ -627,6 +627,55 @@
             });
         }
 
+        if (r.debug.gender_detection) {
+            var gd = r.debug.gender_detection;
+            left.push("");
+            left.push("GENDER");
+            left.push("result".padEnd(10, " ") + ": " + String(gd.result || r.gender || "unknown"));
+            if (gd.level_found != null) {
+                left.push("level_found".padEnd(10, " ") + ": " + (gd.level_found ? "yes" : "no"));
+            }
+            if (gd.row_token_count != null) {
+                left.push("row_tokens".padEnd(10, " ") + ": " + String(gd.row_token_count));
+            }
+            if (gd.name_anchor_right != null) {
+                left.push("anchor_x".padEnd(10, " ") + ": " + String(gd.name_anchor_right));
+            }
+            if (gd.anchor_source) {
+                left.push("source".padEnd(10, " ") + ": " + String(gd.anchor_source));
+            }
+            if (gd.gender_ratio != null) {
+                left.push("ratio".padEnd(10, " ") + ": " + String(gd.gender_ratio));
+            }
+            if (gd.pixel_anchor_right != null) {
+                left.push("pixel_x".padEnd(10, " ") + ": " + String(gd.pixel_anchor_right));
+            }
+            if (gd.row_refine && gd.row_refine.refined_row_y != null) {
+                left.push("row_y".padEnd(10, " ") + ": " + String(gd.row_refine.refined_row_y));
+            }
+            if (gd.primary_scores) {
+                left.push("primary".padEnd(10, " ") + ": " + "M " + (gd.primary_scores.male || 0) + " / F " + (gd.primary_scores.female || 0));
+            }
+            if (gd.used_fallback || gd.roi_fallback) {
+                left.push("fallback".padEnd(10, " ") + ": " + "M " + (((gd.fallback_scores || {}).male) || 0) + " / F " + (((gd.fallback_scores || {}).female) || 0));
+            }
+            if (gd.symbol_search && gd.symbol_search.picked_label) {
+                left.push("symbol".padEnd(10, " ") + ": " + gd.symbol_search.picked_label);
+            }
+            if (gd.ocr && Array.isArray(gd.ocr.texts)) {
+                var ocrTexts = gd.ocr.texts.map(function(t) {
+                    return (t.text || "?") + " " + (((t.conf || 0) * 100).toFixed(1)) + "%";
+                }).join(", ");
+                left.push("ocr".padEnd(10, " ") + ": " + (ocrTexts || "none"));
+            }
+            if (gd.fixed_roi) {
+                left.push("fixed".padEnd(10, " ") + ": " + "M " + (gd.fixed_roi.male || 0) + " / F " + (gd.fixed_roi.female || 0));
+                if (gd.fixed_roi.candidate_count != null) {
+                    left.push("cand".padEnd(10, " ") + ": " + String(gd.fixed_roi.candidate_count));
+                }
+            }
+        }
+
         if (Array.isArray(r.debug.move_candidates) && r.debug.move_candidates.length) {
             right.push("MOVE CANDIDATES");
             r.debug.move_candidates.forEach(function(mc) {
@@ -634,6 +683,39 @@
                 var conf = mc[1];
                 right.push(name.padEnd(20, " ") + " " + (conf * 100).toFixed(1) + "%");
             });
+        }
+
+        if (r.debug.gender_detection) {
+            var gd2 = r.debug.gender_detection;
+            right.push("");
+            right.push("GENDER ROI");
+            if (Array.isArray(gd2.roi_primary)) {
+                right.push("primary".padEnd(20, " ") + gd2.roi_primary.join(","));
+            }
+            if (Array.isArray(gd2.roi_fallback)) {
+                right.push("fallback".padEnd(20, " ") + gd2.roi_fallback.join(","));
+            }
+            if (gd2.ocr && Array.isArray(gd2.ocr.crop)) {
+                right.push("ocr_crop".padEnd(20, " ") + gd2.ocr.crop.join(","));
+            }
+            if (gd2.symbol_search && Array.isArray(gd2.symbol_search.search)) {
+                right.push("symbol_search".padEnd(20, " ") + gd2.symbol_search.search.join(","));
+            }
+            if (gd2.symbol_search && Array.isArray(gd2.symbol_search.picked)) {
+                right.push("symbol_box".padEnd(20, " ") + gd2.symbol_search.picked.join(","));
+            }
+            if (gd2.row_refine && Array.isArray(gd2.row_refine.search)) {
+                right.push("row_refine".padEnd(20, " ") + gd2.row_refine.search.join(","));
+            }
+            if (gd2.fixed_roi && Array.isArray(gd2.fixed_roi.roi)) {
+                right.push("fixed_roi".padEnd(20, " ") + gd2.fixed_roi.roi.join(","));
+            }
+            if (gd2.level_right != null) {
+                right.push("level_right".padEnd(20, " ") + String(gd2.level_right));
+            }
+            if (gd2.row_right != null) {
+                right.push("row_right".padEnd(20, " ") + String(gd2.row_right));
+            }
         }
 
         var maxLines = Math.max(left.length, right.length);
@@ -799,6 +881,34 @@
         );
     }
 
+    function genderSymbol(gender) {
+        var g = String(gender || "").trim().toLowerCase();
+        if (g === "male") return "♂";
+        if (g === "female") return "♀";
+        return "";
+    }
+
+    function genderBadgeHtml(gender) {
+        var g = String(gender || "").trim().toLowerCase();
+        if (g === "male") return '<span title="Male" aria-label="Male" style="color:#60a5fa;">♂</span>';
+        if (g === "female") return '<span title="Female" aria-label="Female" style="color:#f472b6;">♀</span>';
+        return "";
+    }
+
+    function genderLabel(gender) {
+        var g = String(gender || "").trim().toLowerCase();
+        if (g === "male") return "Male";
+        if (g === "female") return "Female";
+        return "";
+    }
+
+    function genderCsvValue(gender) {
+        var g = String(gender || "").trim().toLowerCase();
+        if (g === "male") return "male";
+        if (g === "female") return "female";
+        return "";
+    }
+
     // -------------------------
     // Build pokepaste
     // -------------------------
@@ -864,6 +974,7 @@
             var moves = [r.move1, r.move2, r.move3, r.move4].filter(Boolean).join("\n");
             var debug = formatDebug(r);
             var pokepaste = buildPokePaste(r);
+            var genderBadge = genderBadgeHtml(r.gender);
 
             var sprite = pokemonDbSpriteUrl(r.pokemon, r.shiny === true);
             var shinyBadge = r.shiny ? " ⭐" : "";
@@ -891,7 +1002,7 @@
                 monCell +
                 '<td class="px-3 py-3 align-top text-slate-200/90 debug-col">' + escapeHtml(r.source_file || "") + "</td>" +
                 '<td class="px-3 py-3 align-top font-semibold">' + escapeHtml(r.nickname || "") + "</td>" +
-                '<td class="px-3 py-3 align-top">' + escapeHtml(r.pokemon || "") + shinyBadge + alphaBadge + haBadge + "</td>" +
+                '<td class="px-3 py-3 align-top">' + escapeHtml(r.pokemon || "") + shinyBadge + alphaBadge + haBadge + (genderBadge ? " " + genderBadge : "") + "</td>" +
                 '<td class="px-3 py-3 align-top">' + escapeHtml(r.item || "") + "</td>" +
                 '<td class="px-3 py-3 align-top">' + escapeHtml(r.ability || "") + "</td>" +
                 '<td class="px-3 py-3 align-top">' + escapeHtml(String(r.level || "")) + "</td>" +
@@ -942,6 +1053,7 @@
 
             var movesInline = [r.move1, r.move2, r.move3, r.move4].filter(Boolean).join(", ");
             var pokepaste = buildPokePaste(r);
+            var genderBadge = genderBadgeHtml(r.gender);
 
             var sprite = pokemonDbSpriteUrl(r.pokemon, r.shiny === true);
             var shinyBadge = r.shiny ? " ⭐" : "";
@@ -961,7 +1073,7 @@
                     '<div class="h-12 w-12 rounded-xl border border-white/10 bg-white/5"></div>') +
                 '<div class="min-w-0">' +
                 '<div class="text-sm font-semibold text-slate-100 truncate">' +
-                escapeHtml(r.pokemon || "") + shinyBadge + alphaBadge + haBadge +
+                escapeHtml(r.pokemon || "") + shinyBadge + alphaBadge + haBadge + (genderBadge ? " " + genderBadge : "") +
                 "</div>" +
                 '<div class="text-xs text-slate-400 truncate">' + escapeHtml(r.nickname || "") + "</div>" +
                 "</div>" +
@@ -1065,7 +1177,7 @@
             if (!lastRows.length) return;
 
             var headers = [
-                "Nickname", "Pokemon", "Item", "Ability", "Hidden Ability", "Shiny", "Level",
+                "Nickname", "Pokemon", "Gender", "Item", "Ability", "Hidden Ability", "Shiny", "Level",
                 "EV HP", "EV Atk", "EV Def", "EV SpA", "EV SpD", "EV Spe",
                 "Nature",
                 "IV HP", "IV Atk", "IV Def", "IV SpA", "IV SpD", "IV Spe",
@@ -1083,6 +1195,7 @@
                 var row = [
                     r.nickname || "",
                     r.pokemon || "",
+                    genderCsvValue(r.gender),
                     r.item || "",
                     r.ability || "",
                     r.ha ? "Yes" : "No",
