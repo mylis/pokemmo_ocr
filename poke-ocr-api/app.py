@@ -447,6 +447,20 @@ GENDER_TEMPLATE_FEMALE = _binary_template([
     ".........####.........",
 ])
 
+HA_DIAMOND_TEMPLATE = _binary_template([
+    ".....#.....",
+    "....###....",
+    "...#####...",
+    "..#######..",
+    ".#########.",
+    "###########",
+    ".#########.",
+    "..#######..",
+    "...#####...",
+    "....###....",
+    ".....#.....",
+])
+
 
 def _mask_iou(a: np.ndarray, b: np.ndarray) -> float:
     a = a.astype(bool)
@@ -506,6 +520,9 @@ def _bbox_center_y(bbox) -> float:
     ys = [p[1] for p in bbox]
     return float(sum(ys) / 4.0)
 
+def _bbox_left_x(bbox) -> float:
+    return float(min(p[0] for p in bbox))
+
 def _bbox_right_x(bbox) -> float:
     return float(max(p[0] for p in bbox))
 
@@ -537,41 +554,149 @@ def _nameish_row_text(text: str) -> str:
     return t if re.search(r"[A-Za-z]{2,}", t) else ""
 
 
-def detect_name_end_from_pixels(
+def _count_row_tokens(ocr_results, row_y: float, row_tol: float) -> int:
+    total = 0
+    for item in ocr_results or []:
+        if not isinstance(item, (list, tuple)) or len(item) < 3:
+            continue
+        bbox, text, _conf = item
+        if not text:
+            continue
+        if abs(_bbox_center_y(bbox) - row_y) <= row_tol:
+            total += 1
+    return total
+
+
+def _collect_row_tokens_right(
+    ocr_results,
+    row_y: float,
+    row_tol: float,
+    min_left_x: float,
+    max_left_x: Optional[float] = None,
+    min_conf: float = 0.0,
+) -> list[dict]:
+    tokens = []
+    for item in ocr_results or []:
+        if not isinstance(item, (list, tuple)) or len(item) < 3:
+            continue
+        bbox, text, conf = item
+        if not text:
+            continue
+        conf = float(conf or 0.0)
+        if conf < min_conf:
+            continue
+        cy = _bbox_center_y(bbox)
+        if abs(cy - row_y) > row_tol:
+            continue
+        left_x = _bbox_left_x(bbox)
+        right_x = _bbox_right_x(bbox)
+        if right_x <= min_left_x + 4:
+            continue
+        if max_left_x is not None and left_x >= max_left_x:
+            continue
+        tokens.append({
+            "bbox": bbox,
+            "text": str(text or ""),
+            "conf": conf,
+            "left": float(left_x),
+            "right": float(right_x),
+        })
+
+    tokens.sort(key=lambda t: t["left"])
+    return tokens
+
+
+def _find_level_row_anchor(ocr_results, img_h: int, species_name: str = "") -> Optional[dict]:
+    """
+    Find the OCR token most likely to be the "Lv. <n>" row anchor near the species
+    name. We prefer tokens in the upper summary band and reward rows that also carry
+    some name-like text.
+    """
+    species_key = ascii_only(species_name or "").lower().strip()
+    candidates = []
+
+    for item in ocr_results or []:
+        if not isinstance(item, (list, tuple)) or len(item) < 3:
+            continue
+        bbox, text, conf = item
+        raw = ascii_only(str(text or "")).replace("|", "l").strip()
+        if not raw:
+            continue
+        if not re.search(r"\bl[vwiao1l]{1,3}\b", raw, flags=re.IGNORECASE):
+            continue
+
+        row_y = _bbox_center_y(bbox)
+        if row_y < img_h * 0.16 or row_y > img_h * 0.52:
+            continue
+
+        tail = _nameish_row_text(raw)
+        score = float(conf or 0.0)
+        if re.search(r"\bl[vwiao1l]{1,3}\.?\s*\d{1,3}\b", raw, flags=re.IGNORECASE):
+            score += 0.15
+        if tail:
+            score += 0.20
+
+        if species_key:
+            joined = f"{raw} {tail}".lower()
+            if species_key in joined:
+                score += 0.35
+            elif tail:
+                fuzzy = fuzz.partial_ratio(species_key, tail.lower())
+                if fuzzy >= 75:
+                    score += float(fuzzy) / 250.0
+
+        candidates.append({
+            "bbox": bbox,
+            "text": raw,
+            "tail": tail,
+            "score": score,
+            "row_y": float(row_y),
+            "row_tol": max(18.0, _bbox_height(bbox) * 1.6),
+            "level_right": _bbox_right_x(bbox),
+        })
+
+    if not candidates:
+        return None
+
+    candidates.sort(key=lambda c: (-c["score"], c["row_y"]))
+    return candidates[0]
+
+
+def _detect_white_text_end_from_pixels(
     img_bgr: np.ndarray,
     row_y: float,
     row_tol: float,
-    level_right: float,
+    x1: float,
+    x2: float,
+    *,
+    min_run_width: int = 12,
+    max_local_start: Optional[int] = None,
 ) -> int:
     """
-    Fallback anchor when OCR misses the species token:
-    detect the right edge of the bright white name text on the same row.
+    Find the right edge of the brightest white text run on a row.
     """
     h, w = img_bgr.shape[:2]
     y1 = int(np.clip(row_y - row_tol * 0.75, 0, h - 1))
     y2 = int(np.clip(row_y + row_tol * 0.75, 0, h))
-    x1 = int(np.clip(level_right + 6, 0, w - 1))
-    x2 = int(np.clip(min(level_right + 130, w * 0.90), 0, w))
+    x1 = int(np.clip(x1, 0, w - 1))
+    x2 = int(np.clip(x2, 0, w))
     if x2 <= x1 + 5 or y2 <= y1 + 5:
-        return int(level_right)
+        return int(x1)
 
     roi = img_bgr[y1:y2, x1:x2]
     hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
-
-    # White text: high value, low saturation.
     mask = cv2.inRange(
         hsv,
         np.array([0, 0, 150], dtype=np.uint8),
-        np.array([179, 70, 255], dtype=np.uint8),
+        np.array([179, 80, 255], dtype=np.uint8),
     )
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((2, 2), np.uint8), iterations=1)
 
-    # Join letters and small spaces so the species name becomes one horizontal run.
     col_mask = (np.count_nonzero(mask > 0, axis=0) >= 2).astype(np.uint8)[None, :] * 255
     col_mask = cv2.morphologyEx(col_mask, cv2.MORPH_CLOSE, np.ones((1, 17), np.uint8), iterations=1)
     active_cols = np.where(col_mask[0] > 0)[0]
     if active_cols.size == 0:
-        return int(level_right)
+        return int(x1)
 
     runs = []
     start = int(active_cols[0])
@@ -586,19 +711,175 @@ def detect_name_end_from_pixels(
         prev = idx
     runs.append((start, prev))
 
-    best_right = int(level_right)
+    best_right = int(x1)
     best_width = 0
     for run_start, run_end in runs:
         width = run_end - run_start + 1
-        if width < 16:
+        if width < min_run_width:
             continue
-        if run_start > 110:
+        if max_local_start is not None and run_start > max_local_start:
             continue
         abs_right = x1 + run_end + 1
         if abs_right > best_right or width > best_width:
             best_right = abs_right
             best_width = width
 
+    return best_right if best_right > int(x1) else int(x1)
+
+
+def _detect_gender_from_roi(
+    img_bgr: np.ndarray,
+    x1: int,
+    y1: int,
+    x2: int,
+    y2: int,
+    *,
+    score_min: float,
+    hue_hits_min: int,
+    dominance_min: float,
+    shape_gap_min: float,
+) -> tuple[str, dict]:
+    h, w = img_bgr.shape[:2]
+    x1 = int(np.clip(x1, 0, w - 1))
+    x2 = int(np.clip(x2, 0, w))
+    y1 = int(np.clip(y1, 0, h - 1))
+    y2 = int(np.clip(y2, 0, h))
+
+    debug = {
+        "roi": [x1, y1, x2, y2],
+        "male": 0,
+        "female": 0,
+        "candidate_count": 0,
+        "best_box": None,
+        "picked_label": None,
+        "best_score": 0.0,
+        "best_hits": 0,
+        "opposite_hits": 0,
+        "best_dominance": 0.0,
+        "best_shape_gap": 0.0,
+        "result": "unknown",
+    }
+
+    if x2 <= x1 + 5 or y2 <= y1 + 5:
+        return "unknown", debug
+
+    roi = img_bgr[y1:y2, x1:x2]
+    hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
+    male_mask = cv2.inRange(
+        hsv,
+        np.array([90, 35, 60], dtype=np.uint8),
+        np.array([122, 255, 255], dtype=np.uint8),
+    )
+    female_mask = cv2.inRange(
+        hsv,
+        np.array([140, 35, 60], dtype=np.uint8),
+        np.array([179, 255, 255], dtype=np.uint8),
+    )
+    union = cv2.bitwise_or(male_mask, female_mask)
+    union = cv2.morphologyEx(union, cv2.MORPH_OPEN, np.ones((2, 2), np.uint8), iterations=1)
+
+    num, labels, stats, _ = cv2.connectedComponentsWithStats(union, connectivity=8)
+    candidates = []
+
+    for i in range(1, num):
+        cx = int(stats[i, cv2.CC_STAT_LEFT])
+        cy = int(stats[i, cv2.CC_STAT_TOP])
+        cw = int(stats[i, cv2.CC_STAT_WIDTH])
+        ch = int(stats[i, cv2.CC_STAT_HEIGHT])
+        area = int(stats[i, cv2.CC_STAT_AREA])
+        if area < 140 or area > 1200:
+            continue
+        if cw < 10 or cw > 36 or ch < 20 or ch > 56:
+            continue
+
+        comp = (labels[cy:cy + ch, cx:cx + cw] == i).astype(np.uint8)
+        if int(np.count_nonzero(comp)) <= 0:
+            continue
+
+        comp_resized = cv2.resize(
+            comp,
+            (GENDER_TEMPLATE_MALE.shape[1], GENDER_TEMPLATE_MALE.shape[0]),
+            interpolation=cv2.INTER_NEAREST,
+        )
+
+        male_iou = _mask_iou(comp_resized, GENDER_TEMPLATE_MALE)
+        female_iou = _mask_iou(comp_resized, GENDER_TEMPLATE_FEMALE)
+        male_hits = int(np.count_nonzero(male_mask[cy:cy + ch, cx:cx + cw][comp > 0]))
+        female_hits = int(np.count_nonzero(female_mask[cy:cy + ch, cx:cx + cw][comp > 0]))
+
+        label = "male" if male_iou >= female_iou else "female"
+        score = male_iou if label == "male" else female_iou
+        hue_hits = male_hits if label == "male" else female_hits
+        opposite_hits = female_hits if label == "male" else male_hits
+        dominance = float(hue_hits) / float(max(1, opposite_hits))
+        shape_gap = abs(male_iou - female_iou)
+        abs_box = [x1 + cx, y1 + cy, x1 + cx + cw, y1 + cy + ch]
+
+        candidates.append({
+            "label": label,
+            "score": float(score),
+            "male_iou": float(male_iou),
+            "female_iou": float(female_iou),
+            "male_hits": male_hits,
+            "female_hits": female_hits,
+            "hue_hits": hue_hits,
+            "opposite_hits": opposite_hits,
+            "dominance": dominance,
+            "shape_gap": shape_gap,
+            "box": abs_box,
+            "x": abs_box[0],
+        })
+
+    debug["candidate_count"] = len(candidates)
+    if not candidates:
+        return "unknown", debug
+
+    candidates.sort(key=lambda c: (-c["score"], -c["shape_gap"], -c["hue_hits"], c["x"]))
+    best = candidates[0]
+    debug["male"] = int(round(best["male_iou"] * 100))
+    debug["female"] = int(round(best["female_iou"] * 100))
+    debug["best_box"] = best["box"]
+    debug["picked_label"] = best["label"]
+    debug["best_score"] = round(best["score"], 4)
+    debug["best_hits"] = int(best["hue_hits"])
+    debug["opposite_hits"] = int(best["opposite_hits"])
+    debug["best_dominance"] = round(best["dominance"], 3)
+    debug["best_shape_gap"] = round(best["shape_gap"], 4)
+
+    if (
+        best["score"] >= score_min and
+        best["hue_hits"] >= hue_hits_min and
+        best["dominance"] >= dominance_min and
+        best["shape_gap"] >= shape_gap_min
+    ):
+        debug["result"] = best["label"]
+        return best["label"], debug
+
+    return "unknown", debug
+
+
+def detect_name_end_from_pixels(
+    img_bgr: np.ndarray,
+    row_y: float,
+    row_tol: float,
+    level_right: float,
+) -> int:
+    """
+    Fallback anchor when OCR misses the species token:
+    detect the right edge of the bright white name text on the same row.
+    """
+    h, w = img_bgr.shape[:2]
+    x1 = int(np.clip(level_right + 6, 0, w - 1))
+    x2 = int(np.clip(min(level_right + 130, w * 0.90), 0, w))
+    best_right = _detect_white_text_end_from_pixels(
+        img_bgr,
+        row_y,
+        row_tol,
+        x1,
+        x2,
+        min_run_width=16,
+        max_local_start=110,
+    )
     return best_right if best_right > int(level_right) else int(level_right)
 
 
@@ -648,6 +929,9 @@ def detect_gender_symbol_box(
     row_y: float,
     row_tol: float,
     level_right: float,
+    *,
+    search_x1: Optional[float] = None,
+    search_x2: Optional[float] = None,
 ) -> tuple[Optional[tuple[int, int, int, int]], Optional[str], dict]:
     """
     Find the first plausible colored gender symbol to the right of the level text.
@@ -657,9 +941,21 @@ def detect_gender_symbol_box(
     # Keep the search tightly centered on the level/name row.
     y1 = int(np.clip(row_y - row_tol * 0.80, 0, h - 1))
     y2 = int(np.clip(row_y + row_tol * 0.80, 0, h))
-    x1 = int(np.clip(level_right + 18, 0, w - 1))
-    x2 = int(np.clip(level_right + 150, 0, w))
-    debug = {"search": [x1, y1, x2, y2], "picked": None, "picked_label": None}
+    if search_x1 is None:
+        x1 = int(np.clip(level_right + 18, 0, w - 1))
+    else:
+        x1 = int(np.clip(search_x1, 0, w - 1))
+    if search_x2 is None:
+        x2 = int(np.clip(level_right + 150, 0, w))
+    else:
+        x2 = int(np.clip(search_x2, 0, w))
+    debug = {
+        "search": [x1, y1, x2, y2],
+        "picked": None,
+        "picked_label": None,
+        "picked_area": 0,
+        "picked_hits": 0,
+    }
 
     if x2 <= x1 + 5 or y2 <= y1 + 5:
         return None, None, debug
@@ -683,9 +979,9 @@ def detect_gender_symbol_box(
         cw = int(stats[i, cv2.CC_STAT_WIDTH])
         ch = int(stats[i, cv2.CC_STAT_HEIGHT])
         area = int(stats[i, cv2.CC_STAT_AREA])
-        if area < 8 or area > 1500:
+        if area < 60 or area > 1500:
             continue
-        if cw < 3 or cw > 40 or ch < 8 or ch > 64:
+        if cw < 8 or cw > 40 or ch < 16 or ch > 64:
             continue
 
         comp_mask = labels[cy:cy + ch, cx:cx + cw] == i
@@ -703,15 +999,15 @@ def detect_gender_symbol_box(
         male_hits = int(np.sum((colorful_h >= 92) & (colorful_h <= 125)))
         female_hits = int(np.sum((colorful_h >= 145) & (colorful_h <= 179)))
         total_hits = int(colorful_h.size)
-        if total_hits == 0:
+        if total_hits < 60:
             continue
 
         label = None
         strength = 0
-        if male_hits >= 8 and male_hits >= int(total_hits * 0.55) and male_hits > female_hits * 1.5:
+        if male_hits >= 28 and male_hits >= int(total_hits * 0.68) and male_hits > female_hits * 1.8:
             label = "male"
             strength = male_hits
-        elif female_hits >= 8 and female_hits >= int(total_hits * 0.55) and female_hits > male_hits * 1.5:
+        elif female_hits >= 28 and female_hits >= int(total_hits * 0.68) and female_hits > male_hits * 1.8:
             label = "female"
             strength = female_hits
         if not label:
@@ -725,15 +1021,17 @@ def detect_gender_symbol_box(
         y_dist = abs(center_y - row_y)
 
         # Prefer components close to the row center first, then farther-left ones.
-        candidates.append((y_dist, abs_x1, -strength, -area, label, (abs_x1, abs_y1, abs_x2, abs_y2)))
+        candidates.append((y_dist, abs_x1, -strength, -area, label, strength, area, (abs_x1, abs_y1, abs_x2, abs_y2)))
 
     if not candidates:
         return None, None, debug
 
     candidates.sort()
-    _, _, _, _, label, box = candidates[0]
+    _, _, _, _, label, strength, area, box = candidates[0]
     debug["picked"] = list(box)
     debug["picked_label"] = label
+    debug["picked_area"] = int(area)
+    debug["picked_hits"] = int(strength)
     return box, label, debug
 
 
@@ -838,21 +1136,28 @@ def detect_gender_via_ocr(
             texts.append({"text": str(item[1] or ""), "conf": float(item[2] or 0.0)})
     debug["texts"] = texts
 
-    joined = "".join(t["text"] for t in texts)
-    if "♂" in joined:
+    male_conf = max((t["conf"] for t in texts if "♂" in t["text"]), default=0.0)
+    female_conf = max((t["conf"] for t in texts if "♀" in t["text"]), default=0.0)
+    debug["male_conf"] = round(float(male_conf), 3)
+    debug["female_conf"] = round(float(female_conf), 3)
+
+    if male_conf >= 0.50 and male_conf > female_conf + 0.15:
         debug["result"] = "male"
         return "male", debug
-    if "♀" in joined:
+    if female_conf >= 0.50 and female_conf > male_conf + 0.15:
         debug["result"] = "female"
         return "female", debug
     return "unknown", debug
 
 
-def detect_gender_icon_generic(img_bgr: np.ndarray, species_name: str = "") -> tuple[str, dict]:
+def detect_gender_icon_generic(
+    img_bgr: np.ndarray,
+    species_name: str = "",
+    ocr_results=None,
+) -> tuple[str, dict]:
     """
-    Layout/template-based detector tuned from the provided sample screenshots.
-    The gender icon lives in a stable band of the summary panel, so we search a
-    fixed ROI and compare small colored components to the known male/female glyphs.
+    Prefer an OCR-anchored search on the actual Lv/name row, then fall back to the
+    old fixed-band detector if the anchored crop cannot decide.
     """
     h, w = img_bgr.shape[:2]
     gender_ratio = lookups.get_gender_ratio(species_name) if species_name else None
@@ -871,6 +1176,9 @@ def detect_gender_icon_generic(img_bgr: np.ndarray, species_name: str = "") -> t
         "level_right": 0,
         "name_anchor_right": 0,
         "pixel_anchor_right": 0,
+        "anchor_text": "",
+        "anchor_tail": "",
+        "anchor_score": 0.0,
         "anchor_source": "fixed_template",
         "roi_primary": [search_x1, search_y1, search_x2, search_y2],
         "roi_fallback": None,
@@ -898,184 +1206,408 @@ def detect_gender_icon_generic(img_bgr: np.ndarray, species_name: str = "") -> t
     if search_x2 <= search_x1 + 5 or search_y2 <= search_y1 + 5:
         return "unknown", debug_info
 
-    roi = img_bgr[search_y1:search_y2, search_x1:search_x2]
-    hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
-    male_mask = cv2.inRange(
-        hsv,
-        np.array([90, 35, 60], dtype=np.uint8),
-        np.array([122, 255, 255], dtype=np.uint8),
-    )
-    female_mask = cv2.inRange(
-        hsv,
-        np.array([140, 35, 60], dtype=np.uint8),
-        np.array([179, 255, 255], dtype=np.uint8),
-    )
-    union = cv2.bitwise_or(male_mask, female_mask)
-    union = cv2.morphologyEx(union, cv2.MORPH_OPEN, np.ones((2, 2), np.uint8), iterations=1)
+    primary_debug = None
+    anchor = _find_level_row_anchor(ocr_results, h, species_name)
+    if anchor:
+        row_y = float(anchor["row_y"])
+        row_tol = float(anchor["row_tol"])
+        level_right = float(anchor["level_right"])
+        debug_info["level_found"] = True
+        debug_info["level_right"] = int(round(level_right))
+        debug_info["row_right"] = int(round(level_right))
+        debug_info["anchor_text"] = anchor["text"]
+        debug_info["anchor_tail"] = anchor["tail"]
+        debug_info["anchor_score"] = round(anchor["score"], 3)
+        debug_info["anchor_source"] = "ocr_level_row"
 
-    num, labels, stats, _ = cv2.connectedComponentsWithStats(union, connectivity=8)
+        refined_row_y, row_debug = detect_name_row_from_pixels(img_bgr, row_y, row_tol, level_right)
+        debug_info["row_refine"] = row_debug
+        debug_info["row_token_count"] = _count_row_tokens(ocr_results, refined_row_y, row_tol)
+
+        name_right = float(detect_name_end_from_pixels(img_bgr, refined_row_y, row_tol, level_right))
+        debug_info["name_anchor_right"] = int(round(name_right))
+        debug_info["pixel_anchor_right"] = int(round(name_right))
+        row_right = float(max(level_right, name_right))
+        search_anchor_right = float(min(level_right, name_right))
+        debug_info["row_right"] = int(round(row_right))
+
+        primary_x1 = int(np.clip(search_anchor_right - 42, 0, w - 1))
+        symbol_x1 = int(np.clip(search_anchor_right - 46, 0, w - 1))
+        primary_x2 = int(np.clip(row_right + 92, 0, w))
+        symbol_x2 = int(np.clip(row_right + 88, 0, w))
+        if primary_x2 <= primary_x1 + 10:
+            primary_x1 = int(np.clip(level_right + 18, 0, w - 1))
+            primary_x2 = int(np.clip(level_right + 150, 0, w))
+        if symbol_x2 <= symbol_x1 + 10:
+            symbol_x1 = int(np.clip(max(primary_x1 - 4, level_right + 2), 0, w - 1))
+            symbol_x2 = int(np.clip(min(w, primary_x2 + 4), 0, w))
+        primary_y1 = int(np.clip(refined_row_y - row_tol * 0.95, 0, h - 1))
+        primary_y2 = int(np.clip(refined_row_y + row_tol * 0.95, 0, h))
+
+        primary_label, primary_debug = _detect_gender_from_roi(
+            img_bgr,
+            primary_x1,
+            primary_y1,
+            primary_x2,
+            primary_y2,
+            score_min=0.72,
+            hue_hits_min=95,
+            dominance_min=1.7,
+            shape_gap_min=0.05,
+        )
+        debug_info["roi_primary"] = list(primary_debug["roi"])
+        debug_info["primary_scores"] = {
+            "male": primary_debug["male"],
+            "female": primary_debug["female"],
+        }
+        debug_info["fixed_roi"] = primary_debug
+        debug_info["symbol_search"] = {
+            "search": list(primary_debug["roi"]),
+            "picked": primary_debug.get("best_box"),
+            "picked_label": primary_debug.get("picked_label"),
+        }
+
+        if primary_label != "unknown":
+            debug_info["result"] = primary_label
+            return primary_label, debug_info
+
+        symbol_box, symbol_label, symbol_debug = detect_gender_symbol_box(
+            img_bgr,
+            refined_row_y,
+            row_tol,
+            level_right,
+            search_x1=symbol_x1,
+            search_x2=symbol_x2,
+        )
+        debug_info["symbol_search"] = symbol_debug
+        if symbol_label != "unknown" and symbol_label is not None:
+            debug_info["result"] = symbol_label
+            debug_info["anchor_source"] = "row_symbol_box"
+            return symbol_label, debug_info
+
+        ocr_label, ocr_debug = detect_gender_via_ocr(
+            img_bgr,
+            max(0, primary_x1 - 6),
+            primary_y1,
+            min(w, primary_x2 + 6),
+            primary_y2,
+        )
+        debug_info["ocr"] = ocr_debug
+        if ocr_label != "unknown" and primary_debug.get("picked_label") in {None, ocr_label}:
+            debug_info["result"] = ocr_label
+            debug_info["anchor_source"] = "ocr_symbol"
+            return ocr_label, debug_info
+
+        debug_info["used_fallback"] = True
+
+    fallback_label, fallback_debug = _detect_gender_from_roi(
+        img_bgr,
+        search_x1,
+        search_y1,
+        search_x2,
+        search_y2,
+        score_min=0.80,
+        hue_hits_min=170,
+        dominance_min=2.3,
+        shape_gap_min=0.10,
+    )
+    debug_info["roi_fallback"] = list(fallback_debug["roi"])
+    debug_info["fallback_scores"] = {
+        "male": fallback_debug["male"],
+        "female": fallback_debug["female"],
+    }
+
+    if primary_debug is None:
+        debug_info["fixed_roi"] = fallback_debug
+        debug_info["symbol_search"] = {
+            "search": list(fallback_debug["roi"]),
+            "picked": fallback_debug.get("best_box"),
+            "picked_label": fallback_debug.get("picked_label"),
+        }
+
+    if fallback_label != "unknown":
+        debug_info["result"] = fallback_label
+        return fallback_label, debug_info
+
+    return "unknown", debug_info
+
+def _detect_hidden_ability_in_roi(
+    img_bgr: np.ndarray,
+    x1: int,
+    y1: int,
+    x2: int,
+    y2: int,
+    *,
+    area_min: int,
+    area_max: int,
+    min_iou: float,
+) -> tuple[bool, dict]:
+    h, w = img_bgr.shape[:2]
+    x1 = int(np.clip(x1, 0, w - 1))
+    x2 = int(np.clip(x2, 0, w))
+    y1 = int(np.clip(y1, 0, h - 1))
+    y2 = int(np.clip(y2, 0, h))
+
+    debug = {
+        "roi": [x1, y1, x2, y2],
+        "candidate_count": 0,
+        "picked": None,
+        "best_iou": 0.0,
+        "best_area": 0,
+        "best_extent": 0.0,
+        "best_cyan": 0,
+        "best_highlight": 0,
+        "best_mean_s": 0.0,
+        "best_mean_v": 0.0,
+        "result": False,
+    }
+
+    if x2 <= x1 + 4 or y2 <= y1 + 4:
+        return False, debug
+
+    roi = img_bgr[y1:y2, x1:x2]
+    hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
+    cyan_mask = cv2.inRange(
+        hsv,
+        np.array([78, 22, 90], dtype=np.uint8),
+        np.array([128, 255, 255], dtype=np.uint8),
+    )
+    highlight_mask = cv2.inRange(
+        hsv,
+        np.array([0, 0, 165], dtype=np.uint8),
+        np.array([179, 90, 255], dtype=np.uint8),
+    )
+    mask = cv2.bitwise_or(cyan_mask, highlight_mask)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((2, 2), np.uint8), iterations=1)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((2, 2), np.uint8), iterations=1)
+
+    num, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
     candidates = []
+
     for i in range(1, num):
         cx = int(stats[i, cv2.CC_STAT_LEFT])
         cy = int(stats[i, cv2.CC_STAT_TOP])
         cw = int(stats[i, cv2.CC_STAT_WIDTH])
         ch = int(stats[i, cv2.CC_STAT_HEIGHT])
         area = int(stats[i, cv2.CC_STAT_AREA])
-        if area < 250 or area > 900:
+        if area < area_min or area > area_max:
             continue
-        if cw < 16 or cw > 28 or ch < 28 or ch > 48:
+        if cw < 6 or cw > 32 or ch < 6 or ch > 32:
             continue
-        if cx <= 0 or cy <= 0 or (cx + cw) >= (roi.shape[1] - 1) or (cy + ch) >= (roi.shape[0] - 1):
+
+        ar = max(cw, ch) / max(1, min(cw, ch))
+        if ar > 1.45:
             continue
 
         comp = (labels[cy:cy + ch, cx:cx + cw] == i).astype(np.uint8)
+        if int(np.count_nonzero(comp)) <= 0:
+            continue
+
+        extent = area / float(max(1, cw * ch))
+        if extent < 0.20 or extent > 0.90:
+            continue
+
         comp_resized = cv2.resize(
             comp,
-            (GENDER_TEMPLATE_MALE.shape[1], GENDER_TEMPLATE_MALE.shape[0]),
+            (HA_DIAMOND_TEMPLATE.shape[1], HA_DIAMOND_TEMPLATE.shape[0]),
             interpolation=cv2.INTER_NEAREST,
         )
+        diamond_iou = _mask_iou(comp_resized, HA_DIAMOND_TEMPLATE)
+        if diamond_iou < min_iou:
+            continue
 
-        male_iou = _mask_iou(comp_resized, GENDER_TEMPLATE_MALE)
-        female_iou = _mask_iou(comp_resized, GENDER_TEMPLATE_FEMALE)
-        male_hits = int(np.count_nonzero(male_mask[cy:cy + ch, cx:cx + cw][comp > 0]))
-        female_hits = int(np.count_nonzero(female_mask[cy:cy + ch, cx:cx + cw][comp > 0]))
+        comp_cyan = int(np.count_nonzero(cyan_mask[cy:cy + ch, cx:cx + cw][comp > 0]))
+        comp_highlight = int(np.count_nonzero(highlight_mask[cy:cy + ch, cx:cx + cw][comp > 0]))
+        if comp_cyan < max(8, int(area * 0.12)):
+            continue
+        if (comp_cyan + comp_highlight) < max(12, int(area * 0.28)):
+            continue
 
-        abs_box = [search_x1 + cx, search_y1 + cy, search_x1 + cx + cw, search_y1 + cy + ch]
-        label = "male" if male_iou >= female_iou else "female"
-        score = male_iou if label == "male" else female_iou
-        hue_hits = male_hits if label == "male" else female_hits
-        opposite_hits = female_hits if label == "male" else male_hits
+        comp_s = hsv[cy:cy + ch, cx:cx + cw, 1][comp > 0]
+        comp_v = hsv[cy:cy + ch, cx:cx + cw, 2][comp > 0]
+        mean_s = float(np.mean(comp_s)) if comp_s.size else 0.0
+        mean_v = float(np.mean(comp_v)) if comp_v.size else 0.0
+        if mean_v < 100:
+            continue
+        if mean_s < 16:
+            continue
 
         candidates.append({
-            "label": label,
-            "score": float(score),
-            "male_iou": float(male_iou),
-            "female_iou": float(female_iou),
-            "male_hits": male_hits,
-            "female_hits": female_hits,
-            "hue_hits": hue_hits,
-            "opposite_hits": opposite_hits,
-            "box": abs_box,
-            "x": abs_box[0],
+            "box": [x1 + cx, y1 + cy, x1 + cx + cw, y1 + cy + ch],
             "area": area,
+            "extent": extent,
+            "diamond_iou": diamond_iou,
+            "comp_cyan": comp_cyan,
+            "comp_highlight": comp_highlight,
+            "mean_s": mean_s,
+            "mean_v": mean_v,
         })
 
-    debug_info["fixed_roi"]["candidate_count"] = len(candidates)
+    debug["candidate_count"] = len(candidates)
     if not candidates:
-        return "unknown", debug_info
+        return False, debug
 
-    candidates.sort(key=lambda c: (-c["score"], c["x"]))
+    candidates.sort(key=lambda c: (-c["diamond_iou"], -c["comp_cyan"], -c["area"]))
     best = candidates[0]
-    debug_info["primary_scores"] = {
-        "male": int(round(best["male_iou"] * 100)),
-        "female": int(round(best["female_iou"] * 100)),
-    }
-    debug_info["fixed_roi"]["male"] = int(round(best["male_iou"] * 100))
-    debug_info["fixed_roi"]["female"] = int(round(best["female_iou"] * 100))
-    debug_info["symbol_search"] = {
-        "search": [search_x1, search_y1, search_x2, search_y2],
-        "picked": best["box"],
-        "picked_label": best["label"],
-    }
-    debug_info["name_anchor_right"] = int(best["box"][2])
-    debug_info["pixel_anchor_right"] = int(best["box"][2])
+    debug["picked"] = best["box"]
+    debug["best_iou"] = round(float(best["diamond_iou"]), 4)
+    debug["best_area"] = int(best["area"])
+    debug["best_extent"] = round(float(best["extent"]), 4)
+    debug["best_cyan"] = int(best["comp_cyan"])
+    debug["best_highlight"] = int(best["comp_highlight"])
+    debug["best_mean_s"] = round(float(best["mean_s"]), 2)
+    debug["best_mean_v"] = round(float(best["mean_v"]), 2)
+    debug["result"] = True
+    return True, debug
 
-    best_label = best["label"]
-    best_score = best["score"]
-    best_hits = best["hue_hits"]
-    opposite_hits = best["opposite_hits"]
 
-    if best_score >= 0.82 and best_hits >= max(180, opposite_hits * 2):
-        debug_info["result"] = best_label
-        return best_label, debug_info
-
-    return "unknown", debug_info
-
-def detect_hidden_ability_diamond_generic(img_bgr: np.ndarray, ocr_results) -> bool:
+def detect_hidden_ability_diamond_generic(img_bgr: np.ndarray, ocr_results) -> tuple[bool, dict]:
     """
-    Generic HA diamond detector:
-    - Find 'Ability' label using OCR
-    - Search a fixed strip to the right of the LABEL (not the value)
-      so ability length / bbox weirdness can't hide the diamond
-    - Color mask for teal/cyan (low saturation allowed)
-    - Shape check using minAreaRect (more tolerant than 4-point approx)
+    Hidden Ability detector:
+    - Find the Ability label on the expected row
+    - Anchor the right edge of the ability value from OCR + white text pixels
+    - Search a tight window first, then a stronger broad row fallback
     """
     h, w = img_bgr.shape[:2]
+    debug_info = {
+        "result": False,
+        "source": "none",
+        "label_box": None,
+        "label_right": 0,
+        "row_y": 0,
+        "row_tol": 0,
+        "row_token_count": 0,
+        "ocr_value_right": 0,
+        "pixel_value_right": 0,
+        "value_right": 0,
+        "roi_primary": None,
+        "roi_fallback": None,
+        "primary": {"candidate_count": 0},
+        "fallback": {"candidate_count": 0},
+    }
     if not ocr_results:
-        return False
+        debug_info["source"] = "no_ocr"
+        return False, debug_info
 
-    # 1) locate "Ability" label bbox
-    ability_label_bbox = None
+    ability_candidates = []
     for bbox, text, conf in ocr_results:
         if not text:
             continue
-        tl = text.strip().lower()
-        # tolerant: Ability / Abil1ty / Abillty...
+        tl = ascii_only(text).strip().lower()
+        if not tl:
+            continue
+        row_y = _bbox_center_y(bbox)
+        left_x = _bbox_left_x(bbox)
+        if row_y < h * 0.46 or row_y > h * 0.76:
+            continue
+        if left_x > w * 0.32:
+            continue
         if (("abil" in tl) and (len(tl) <= 12)) or re.fullmatch(r"abil\w*", tl):
-            ability_label_bbox = bbox
-            break
+            score = float(conf or 0.0)
+            if tl.startswith("abil"):
+                score += 0.15
+            ability_candidates.append((score, bbox))
 
-    if ability_label_bbox is None:
-        return False
+    if not ability_candidates:
+        debug_info["source"] = "no_ability_label"
+        return False, debug_info
 
+    ability_candidates.sort(key=lambda item: item[0], reverse=True)
+    ability_label_bbox = ability_candidates[0][1]
     row_y = _bbox_center_y(ability_label_bbox)
     row_tol = max(18.0, _bbox_height(ability_label_bbox) * 1.6)
     label_right = _bbox_right_x(ability_label_bbox)
+    debug_info["label_box"] = [[int(round(p[0])), int(round(p[1]))] for p in ability_label_bbox]
+    debug_info["label_right"] = int(round(label_right))
+    debug_info["row_y"] = int(round(row_y))
+    debug_info["row_tol"] = round(float(row_tol), 2)
 
-    # 2) build ROI strip to the right of the LABEL (covers the value + diamond)
-    x1 = int(np.clip(label_right + 6, 0, w - 1))
-    # wide enough to cover long abilities + diamond area
-    x2 = int(np.clip(label_right + 320, 0, w))
+    row_tokens = _collect_row_tokens_right(
+        ocr_results,
+        row_y,
+        row_tol,
+        label_right,
+        max_left_x=min(w * 0.90, label_right + 320),
+        min_conf=0.20,
+    )
+    row_tokens = [
+        t for t in row_tokens
+        if not any(lbl in ascii_only(t["text"]).strip().lower() for lbl in ("item", "nature", "markings", "stats", "ivs", "evs"))
+    ]
+    debug_info["row_token_count"] = len(row_tokens)
 
-    y1 = int(np.clip(row_y - row_tol * 1.15, 0, h - 1))
-    y2 = int(np.clip(row_y + row_tol * 1.15, 0, h))
+    ocr_value_right = max((t["right"] for t in row_tokens), default=float(label_right))
+    pixel_value_right = float(_detect_white_text_end_from_pixels(
+        img_bgr,
+        row_y,
+        row_tol,
+        label_right + 10,
+        min(w * 0.92, label_right + 280),
+        min_run_width=10,
+    ))
+    if ocr_value_right > label_right + 8:
+        pixel_value_right = min(pixel_value_right, ocr_value_right + max(12.0, row_tol * 0.40))
+        ability_value_right = max(float(label_right), ocr_value_right)
+    else:
+        ability_value_right = max(float(label_right), pixel_value_right)
 
-    if x2 <= x1 + 5 or y2 <= y1 + 5:
-        return False
+    debug_info["ocr_value_right"] = int(round(ocr_value_right))
+    debug_info["pixel_value_right"] = int(round(pixel_value_right))
+    debug_info["value_right"] = int(round(ability_value_right))
 
-    roi = img_bgr[y1:y2, x1:x2]
+    if ability_value_right <= label_right + 16:
+        debug_info["source"] = "no_value_anchor"
+        return False, debug_info
 
-    # 3) teal/cyan mask (LOW saturation allowed!)
-    hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
-    lower = np.array([70, 5, 55], dtype=np.uint8)
-    upper = np.array([135, 255, 255], dtype=np.uint8)
-    mask = cv2.inRange(hsv, lower, upper)
+    left_buffer = max(8, min(18, int(round(row_tol * 0.22))))
+    right_buffer = max(36, min(72, int(round(row_tol * 1.15))))
+    primary_x1 = int(np.clip(max(label_right + 6, ability_value_right - left_buffer), 0, w - 1))
+    primary_x2 = int(np.clip(max(primary_x1 + 24, pixel_value_right + right_buffer), 0, w))
+    primary_x2 = int(np.clip(min(primary_x2, label_right + 240), 0, w))
+    primary_y1 = int(np.clip(row_y - row_tol * 0.80, 0, h - 1))
+    primary_y2 = int(np.clip(row_y + row_tol * 0.80, 0, h))
 
-    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8), iterations=1)
-    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8), iterations=1)
+    primary_ok, primary_debug = _detect_hidden_ability_in_roi(
+        img_bgr,
+        primary_x1,
+        primary_y1,
+        primary_x2,
+        primary_y2,
+        area_min=150,
+        area_max=280,
+        min_iou=0.18,
+    )
+    debug_info["roi_primary"] = list(primary_debug["roi"])
+    debug_info["primary"] = primary_debug
+    if primary_ok:
+        debug_info["result"] = True
+        debug_info["source"] = "anchored_value"
+        return True, debug_info
 
-    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    if not contours:
-        return False
+    fallback_x1 = int(np.clip(label_right + 18, 0, w - 1))
+    fallback_x2 = int(np.clip(min(max(label_right + 230, ability_value_right + 90), label_right + 280), 0, w))
+    fallback_y1 = int(np.clip(row_y - row_tol * 0.95, 0, h - 1))
+    fallback_y2 = int(np.clip(row_y + row_tol * 0.95, 0, h))
 
-    roi_area = roi.shape[0] * roi.shape[1]
+    fallback_ok, fallback_debug = _detect_hidden_ability_in_roi(
+        img_bgr,
+        fallback_x1,
+        fallback_y1,
+        fallback_x2,
+        fallback_y2,
+        area_min=150,
+        area_max=320,
+        min_iou=0.16,
+    )
+    debug_info["roi_fallback"] = list(fallback_debug["roi"])
+    debug_info["fallback"] = fallback_debug
+    if fallback_ok:
+        debug_info["result"] = True
+        debug_info["source"] = "row_fallback"
+        return True, debug_info
 
-    for cnt in contours:
-        area = cv2.contourArea(cnt)
-        if area < 12 or area > roi_area * 0.25:
-            continue
-
-        rect = cv2.minAreaRect(cnt)
-        (cx, cy), (rw, rh), angle = rect
-        if rw <= 0 or rh <= 0:
-            continue
-
-        ar = max(rw, rh) / max(1.0, min(rw, rh))
-        if ar > 1.8:  # too skinny to be a diamond
-            continue
-
-        # How filled the box is (diamond is ~0.5, but give tolerance)
-        extent = area / float(rw * rh)
-        if extent < 0.18 or extent > 0.92:
-            continue
-
-        # size sanity (diamond is small)
-        if max(rw, rh) < 6 or max(rw, rh) > 40:
-            continue
-
-        return True
-
-    return False
+    debug_info["source"] = "no_candidate"
+    return False, debug_info
 
 
 # -----------------------------
@@ -1269,12 +1801,14 @@ def parse_one_image_pil(img: Image.Image, source_name: str = "") -> dict:
     results = _run_easyocr(prep)
     _cleanup_cuda_cache()
 
-    parsed["ha"] = bool(detect_hidden_ability_diamond_generic(img_bgr_big, results))
+    ha, ha_debug = detect_hidden_ability_diamond_generic(img_bgr_big, results)
+    parsed["ha"] = bool(ha)
     parsed.update(parse_easyocr_results(results, conf_min=0.60))
     parsed = lookups.canonicalize(parsed)
-    gender, gender_debug = detect_gender_icon_generic(img_bgr_big, parsed.get("pokemon", ""))
+    gender, gender_debug = detect_gender_icon_generic(img_bgr_big, parsed.get("pokemon", ""), results)
     parsed["gender"] = gender
     parsed.setdefault("debug", {})
+    parsed["debug"]["ha_detection"] = ha_debug
     parsed["debug"]["gender_detection"] = gender_debug
     parsed["item"] = ascii_only(parsed.get("item", ""))
 

@@ -588,6 +588,41 @@
             });
         }
 
+        if (r.debug.ha_detection) {
+            var hd = r.debug.ha_detection;
+            left.push("");
+            left.push("HA");
+            left.push("result".padEnd(10, " ") + ": " + (hd.result ? "yes" : "no"));
+            if (hd.source) {
+                left.push("source".padEnd(10, " ") + ": " + String(hd.source));
+            }
+            if (hd.row_token_count != null) {
+                left.push("row_tokens".padEnd(10, " ") + ": " + String(hd.row_token_count));
+            }
+            if (hd.label_right != null) {
+                left.push("label_x".padEnd(10, " ") + ": " + String(hd.label_right));
+            }
+            if (hd.value_right != null) {
+                left.push("value_x".padEnd(10, " ") + ": " + String(hd.value_right));
+            }
+            if (hd.ocr_value_right != null) {
+                left.push("ocr_x".padEnd(10, " ") + ": " + String(hd.ocr_value_right));
+            }
+            if (hd.pixel_value_right != null) {
+                left.push("pixel_x".padEnd(10, " ") + ": " + String(hd.pixel_value_right));
+            }
+            if (hd.primary) {
+                left.push("primary".padEnd(10, " ") + ": " +
+                    "cand " + String(hd.primary.candidate_count || 0) +
+                    " / iou " + String(hd.primary.best_iou || 0));
+            }
+            if (hd.roi_fallback || (hd.fallback && hd.fallback.candidate_count != null)) {
+                left.push("fallback".padEnd(10, " ") + ": " +
+                    "cand " + String(((hd.fallback || {}).candidate_count) || 0) +
+                    " / iou " + String(((hd.fallback || {}).best_iou) || 0));
+            }
+        }
+
         if (r.debug.gender_detection) {
             var gd = r.debug.gender_detection;
             left.push("");
@@ -644,6 +679,36 @@
                 var conf = mc[1];
                 right.push(name.padEnd(20, " ") + " " + (conf * 100).toFixed(1) + "%");
             });
+        }
+
+        if (r.debug.ha_detection) {
+            var hd2 = r.debug.ha_detection;
+            right.push("");
+            right.push("HA ROI");
+            if (Array.isArray(hd2.roi_primary)) {
+                right.push("primary".padEnd(20, " ") + hd2.roi_primary.join(","));
+            }
+            if (hd2.primary && Array.isArray(hd2.primary.picked)) {
+                right.push("primary_box".padEnd(20, " ") + hd2.primary.picked.join(","));
+            }
+            if (Array.isArray(hd2.roi_fallback)) {
+                right.push("fallback".padEnd(20, " ") + hd2.roi_fallback.join(","));
+            }
+            if (hd2.fallback && Array.isArray(hd2.fallback.picked)) {
+                right.push("fallback_box".padEnd(20, " ") + hd2.fallback.picked.join(","));
+            }
+            if (Array.isArray(hd2.label_box)) {
+                var labelBox = hd2.label_box.map(function(pt) {
+                    return Array.isArray(pt) ? pt.join("/") : String(pt);
+                }).join(" ");
+                right.push("label_box".padEnd(20, " ") + labelBox);
+            }
+            if (hd2.row_y != null) {
+                right.push("row_y".padEnd(20, " ") + String(hd2.row_y));
+            }
+            if (hd2.row_tol != null) {
+                right.push("row_tol".padEnd(20, " ") + String(hd2.row_tol));
+            }
         }
 
         if (r.debug.gender_detection) {
