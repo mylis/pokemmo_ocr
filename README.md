@@ -1,420 +1,336 @@
-# PokéMMO Screenshot Exporter (OCR Tool)
+# Pokemon OCR for PokeMMO
 
-A web-based OCR tool for PokéMMO that extracts Pokémon data from screenshots or videos and exports it in multiple useful formats.
+Web UI + OCR API + optional Discord bot for extracting Pokemon data from PokeMMO summary screens.
 
-This tool eliminates manual data entry and makes it easy to:
+The project can read screenshots or videos and export:
 
-- Build PvP/Raid teams
-- Export Pokémon to Google Sheets
-- Generate PokéPaste sets
-- Feed Pokémon data into Firestore-backed applications
+- PokePaste text
+- CSV for spreadsheets
+- Firestore-friendly JSON
 
-Live Demo:
-https://mylis.github.io/pokemmo_ocr/
+Links:
 
-Invite the Discord bot:
-https://discord.com/oauth2/authorize?client_id=1469456127845466335&permissions=2147600384&integration_type=0&scope=bot+applications.commands
+- Live demo: https://mylis.github.io/pokemmo_ocr/
+- Discord bot invite: https://discord.com/oauth2/authorize?client_id=1469456127845466335&permissions=2147600384&integration_type=0&scope=bot+applications.commands
+- Forum post: https://forums.pokemmo.com/index.php?/topic/196042-website-pok%C3%A9mmo-ocr-tool-quick-guide/#comment-2214251
 
-Forum post:
-https://forums.pokemmo.com/index.php?/topic/196042-website-pok%C3%A9mmo-ocr-tool-quick-guide/#comment-2214251
+## Current Features
 
----
+### Web App
 
-## Features
+- Upload screenshots, videos, or a mix of both in one batch
+- Process multiple videos sequentially
+- Drag and drop files into the page
+- Paste screenshots directly from the clipboard
+- Detect unique Pokemon frames from videos before OCR
+- Built-in Unique Frame Extractor for full-screen recordings
+- Copy individual PokePaste blocks or copy all at once
+- Toggle OTS mode in the UI
+- Export CSV from standard OCR results
+- Hide or include the PokePaste column in CSV export
+- View Firestore JSON and copy each record or the full JSON bundle
+- Delete individual OCR results from the current session
+- Responsive desktop table / mobile card layout
 
-- Upload **multiple screenshots** or **one video**
-- Automatic frame sampling for videos
-- OCR tuned for PokéMMO’s default UI
-- Duplicate Pokémon detection (video & batch uploads)
-- Shiny detection
-- One-click PokéPaste copy
-- Export formats:
-  - PokéPaste
-  - CSV (spreadsheet-friendly)
-  - JSON (Firestore-ready)
-- No Pokémon data is stored server-side
+### OCR Data
 
----
+The parser is tuned for the default PokeMMO summary screen and attempts to extract:
 
-## Supported Inputs
+- Species
+- Nickname
+- Level
+- Nature
+- Ability
+- Hidden Ability flag
+- Item
+- Gender
+- Shiny flag
+- Alpha flag
+- EVs
+- IVs
+- Stats
+- Moves
 
-### Screenshots
-- PNG / JPG / WebP
-- One Pokémon per screenshot
-- Default PokéMMO theme strongly recommended 
+### Discord Bot
 
-### Video
-- MP4 / WebM / MOV
-- Pause ~1 second per Pokémon screen
-- Pokémon summary screen only (PC view)
+- Slash-command workflow
+- Up to 10 screenshot attachments or 1 video per command
+- Full and OTS output modes
+- Interactive Pokemon picker
+- Copy all / copy selected PokePaste output
+- JSON export as `rows.json`
 
-#### Input Guidelines
-- Use default PokéMMO theme
-- One Pokémon per screenshot
-- Stats, EVs, IVs, moves visible
-- No overlays or chat windows
-- No cropped or resized images 
----
+## Recommended Inputs
 
-## Output Formats
+For best OCR accuracy:
 
-### PokéPaste
-Compatible with PokéPaste / Showdown-style imports.
+- Use the default PokeMMO theme
+- Use the Pokemon summary screen
+- Keep stats, EVs, IVs, moves, and item visible
+- Avoid overlays, chat windows, or heavy cropping
+- Use one Pokemon per screenshot
+- Keep resolution consistent across uploads when possible
 
-Supports:
-- Full mode (EVs / IVs / Nature)
-- OTS (Open Team Sheet) mode
+Supported web inputs:
 
-### CSV
-Formatted to match common Pokémon tracking spreadsheets.
+- Images: PNG, JPG, JPEG, WebP
+- Videos: MP4, WebM, MOV, MKV
 
-### JSON
-Returned in two modes:
-- Raw OCR output
-- Firestore-friendly structured format (used by integrations)
+## Web App Usage
 
----
+### Run Locally
 
-## Running the Backend (API)
+The frontend is a static site. The repo includes a helper batch file:
 
-### Docker (Recommended)
-
-From inside `poke-ocr-api/`:
-
-```
-docker build -t poke-ocr-api .
-docker run --rm --gpus all -e EASYOCR_GPU=1 -p 8000:8000 poke-ocr-api
-```
-
-The API will be available at:
-
-```
-http://localhost:8000
+```bat
+run.bat
 ```
 
----
+That starts:
 
-## API Endpoints
-
-### Health Check
-
-Simple health check to verify the API is running.
-
-```
-GET /health
+```bat
+py -3.12 -m http.server 5173
 ```
 
-Response:
-```
-{ "ok": true }
-```
+Then open:
 
-
-### POST /parse
-
-Parses one or more PokéMMO screenshots and returns structured data suitable for:
-
-- UI rendering  
-- CSV export  
-- PokéPaste generation  
-
-Request:
-- multipart/form-data
-- Field name: `files`
-- Accepts multiple image files
-
-Response:
-```
-{
-  "ok": true,
-  "rows": [
-    {
-      "pokemon": "Kingdra",
-      "nickname": "dagod",
-      "level": 100,
-      "nature": "Modest",
-      "ability": "Swift Swim",
-      "item": "Life Orb",
-      "ev_hp": 6,
-      "ev_atk": 0,
-      "ev_def": 0,
-      "ev_spa": 252,
-      "ev_spd": 0,
-      "ev_spe": 252,
-      "iv_hp": 31,
-      "iv_atk": 18,
-      "iv_def": 31,
-      "iv_spa": 31,
-      "iv_spd": 31,
-      "iv_spe": 31,
-      "move1": "Protect",
-      "move2": "Muddy Water",
-      "move3": "Dragon Pulse",
-      "move4": "Weather Ball",
-      "debug": {
-        "raw_lines": [],
-        "move_candidates": []
-      }
-    }
-  ]
-}
+```text
+http://localhost:5173
 ```
 
----
-
-### POST /parse_firestore
-
-Returns Pokémon data formatted for Firestore or other external applications.
-
-Intended for:
-- Pokédex apps  
-- Collection tracking  
-- PvP and team builders  
-
-Request:
-- multipart/form-data
-- Field name: `files`
-
-Response:
-```
-{
-  "id": "",
-  "ownerId": "",
-  "species": "Kingdra",
-  "nickname": "Kindri",
-  "level": 100,
-  "stats": {
-    "hp": 292,
-    "atk": 191,
-    "def": 226,
-    "spa": 317,
-    "spd": 226,
-    "spe": 269
-  },
-  "evs": {
-    "hp": 6,
-    "atk": 0,
-    "def": 0,
-    "spa": 252,
-    "spd": 0,
-    "spe": 252
-  },
-  "ivs": {
-    "hp": 31,
-    "atk": 18,
-    "def": 31,
-    "spa": 31,
-    "spd": 31,
-    "spe": 31
-  },
-  "nature": "Modest",
-  "item": "Life Orb",
-  "moves": [
-    "Protect",
-    "Dragon Pulse",
-    "Weather Ball",
-    "Muddy Water"
-  ],
-  "notes": "",
-  "shiny": null,
-  "encounters": 0,
-  "gender": "unknown",
-  "form": "",
-  "secretShiny": null,
-  "encounterType": "",
-  "ot": null,
-  "alpha": null,
-  "addedAt": "",
-  "pvp": null,
-  "e4": null,
-  "gymReRuns": null,
-  "contestRibbons": null,
-  "raidReady": null,
-  "collectable": null,
-  "eggMoves": null,
-  "catchDate": ""
-}
-```
----
-
-## Frontend Usage
-
-Open directly:
-
-```
-Index.html
-```
+You can also open `index.html` directly, but using the local server is the smoother option for development.
 
 ### URL Parameters
 
 | Parameter | Description |
-|---------|-------------|
-| api | API base URL |
-| debug=1 | Enables debug + Firestore mode |
+| --- | --- |
+| `api` | Override the API base URL. Default is `https://api.mylis.net` |
+| `debug=1` | Show Firestore/debug UI, including the Firestore button and extra debug panels |
 
----
+Example:
 
-## Discord Bot (OCR via Slash Commands)
-
-A standalone Discord bot that uses the OCR API and allows users to process screenshots **directly from Discord**.
-
-The bot runs in its **own Docker container** and can point to **any compatible API deployment** (yours or someone else’s).
-
-### Features
-
-- Slash commands only (no message scraping)
-- Accepts **image attachments** or **one video**
-- Supports **Full** and **OTS (Open Team Sheet)** modes
-- Returns:
-  - PokéPaste (`.txt`)
-  - Firestore-ready JSON (`ocr_json` only)
-- Interactive UI:
-  - Pokémon selector
-  - Toggle OTS mode
-  - Copy all / copy selected
-- No Pokémon data is stored
-
-### Commands
-
-#### `/ocr`
-Full interactive OCR run.
-
-- Upload screenshots or one video as attachments
-- Returns:
-  - PokéPaste
-  - JSON
-  - Interactive buttons & selector
-
-#### `/ocr_pokepaste`
-Returns **only PokéPaste** as a text file.
-
-- Supports Full / OTS mode
-- No JSON output
-
-#### `/ocr_json`
-Returns **only JSON** in the following Firestore-ready format  
-(fields not detected are left empty):
-
-```json
-{
-  "id": "",
-  "ownerId": "",
-  "species": "",
-  "nickname": "",
-  "level": 0,
-  "stats": { "hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0 },
-  "evs":   { "hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0 },
-  "ivs":   { "hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0 },
-  "nature": "",
-  "item": "",
-  "moves": [],
-  "notes": "",
-  "shiny": null,
-  "gender": "unknown",
-  "form": "",
-  "alpha": null
-}
+```text
+http://localhost:5173/?api=http://localhost:8000&debug=1
 ```
----
 
-## Discord Bot Deployment (Docker)
+### Web Workflow
 
-The Discord bot is deployed separately from the API.
+1. Upload screenshots, videos, or a mix of both.
+2. The app routes images to image endpoints and videos to video endpoints automatically.
+3. Standard mode renders PokePaste-ready results and enables CSV export.
+4. Debug mode also exposes Firestore JSON output and extra OCR diagnostics.
 
+## Unique Frame Extractor
+
+The web app includes a built-in helper for recorded videos.
+
+It can:
+
+- Load a video in a modal
+- Let you drag-select a region of interest
+- Compare that region frame-by-frame
+- Save only meaningfully different frames
+- Send whole frames or ROI crops directly into OCR
+- Send extracted frames to Firestore mode when `debug=1` is enabled
+- Download extracted whole-frame or ROI ZIP files
+
+This is useful when you recorded your full screen instead of taking separate screenshots.
+
+Frame extraction inspiration:
+
+- https://bigcurry.github.io/Niche-PokeMMO-Tools/
+- https://github.com/BigCurry/Niche-PokeMMO-Tools
+
+## OCR API
+
+The backend lives in `poke-ocr-api/` and is built with FastAPI + EasyOCR.
+
+### Run With Docker
+
+From `poke-ocr-api/`:
+
+```bat
+docker build -t poke-ocr-api .
 ```
-Required Environment Variables
+
+CPU example:
+
+```bat
+docker run --rm -p 8000:8000 -e EASYOCR_GPU=0 poke-ocr-api
+```
+
+GPU example:
+
+```bat
+docker run --rm --gpus all -p 8000:8000 -e EASYOCR_GPU=1 poke-ocr-api
+```
+
+Windows helper:
+
+```bat
+poke-ocr-api\run.bat
+```
+
+The API listens on:
+
+```text
+http://localhost:8000
+```
+
+### Important Environment Variables
+
+- `EASYOCR_GPU`: `1` for GPU, `0` for CPU
+- `EASYOCR_MODULE_PATH`: EasyOCR model cache path
+- `WEB_CONCURRENCY`: Gunicorn worker count
+- `OCR_WORKERS`: OCR thread pool size per worker
+- `OCR_INFLIGHT`: Max OCR jobs in flight per worker
+- `MAX_UPLOAD_BYTES`: Total request cap, default `250000000`
+- `MAX_IMAGE_BYTES`: Per-image cap, default `15000000`
+- `MAX_VIDEO_BYTES`: Per-video cap, default `200000000`
+- `GUNICORN_TIMEOUT`: Worker timeout
+
+### Endpoints
+
+#### `GET /health`
+
+Returns API status plus GPU/runtime information.
+
+#### `POST /parse`
+
+Standard OCR for one or more images.
+
+- Content type: `multipart/form-data`
+- Field name: `files`
+- Returns: `{ ok, rows }`
+
+Each row includes standard OCR fields such as:
+
+- `pokemon`
+- `nickname`
+- `level`
+- `nature`
+- `ability`
+- `item`
+- `gender`
+- `shiny`
+- `alpha`
+- `ha`
+- `move1` to `move4`
+- EV / IV / stat fields
+- `source_file`
+
+#### `POST /parse_firestore`
+
+Same image input as `/parse`, but returns Firestore-friendly rows.
+
+- Content type: `multipart/form-data`
+- Field name: `files`
+- Optional query param: `ownerId`
+- Returns: `{ ok, rows }`
+
+#### `POST /parse_video`
+
+OCR for a single video after frame sampling and deduplication.
+
+- Content type: `multipart/form-data`
+- Field name: `file`
+- Optional query params: `target_fps` (default `3.0`), `dist_threshold` (default `6`), `compare_to` (`last_kept` or `all_kept`), `crop` (`x,y,w,h`)
+- Returns: `{ ok, frames_total, frames_unique, rows, rows_unique }`
+
+#### `POST /parse_video_firestore`
+
+Video OCR with Firestore-formatted output.
+
+- Content type: `multipart/form-data`
+- Field name: `file`
+- Optional query params: `ownerId`, `target_fps`, `dist_threshold`, `compare_to`, `crop`
+- Returns: `{ ok, frames_total, frames_unique, rows, rows_unique }`
+
+## Discord Bot
+
+The Discord bot lives in `poke-discord-bot/` and talks to any compatible OCR API deployment.
+
+Current commands:
+
+- `/ocr`
+- `/ocr_pokepaste`
+- `/ocr_json`
+- `/help`
+- `/about`
+- `/ping`
+
+Bot input rules:
+
+- Up to 10 images or 1 video
+- No mixed image + video attachments in the same command
+- `DEFAULT_MODE` controls whether the default PokePaste mode is Full or OTS
+
+### Deploy With Docker
+
+From `poke-discord-bot/` create an `.env` file with:
+
+```env
 DISCORD_TOKEN=your_discord_bot_token
 API_BASE=https://api.mylis.net
-DEFAULT_MODE=full   # or "ots"
+DEFAULT_MODE=full
 ```
 
-Run with Docker
-```
-docker build -t pokemmo-ocr-discord .
-docker run -d \
-  --name pokemmo-ocr-discord \
-  --env-file .env \
-  pokemmo-ocr-discord
+Then run:
+
+```bat
+docker compose up --build -d
 ```
 
-The bot automatically registers slash commands on startup.
+Or without Compose:
 
----
+```bat
+docker build -t pokemmo-ocr-discord-bot .
+docker run -d --name pokemmo-ocr-discord-bot --env-file .env pokemmo-ocr-discord-bot
+```
 
-## Discord Permissions
+### Discord Permissions
 
-When inviting the bot:
+OAuth scopes:
 
-### OAuth2 Scopes
-- bot
-- applications.commands
-### Bot Permissions
+- `bot`
+- `applications.commands`
+
+Bot permissions:
+
 - Send Messages
 - Embed Links
 - Attach Files
 - Read Message History
 
-No admin permissions required.
+## Project Layout
 
---- 
+```text
+.
+|-- index.html
+|-- css/
+|-- js/
+|-- assets/
+|-- poke-ocr-api/
+`-- poke-discord-bot/
+```
 
-## Frame Extractor (Video Helper Tool)
+## Privacy
 
-When uploading videos, you can use the built-in Unique Frame Extractor to automatically detect when a new Pokémon appears.
+Pokemon data is not intended to be permanently stored by the web app itself.
 
-Instead of manually taking screenshots, the extractor:
-- Processes the video frame-by-frame
-- Lets you select a small region of the screen (typically the Pokémon name area)
-- Compares that region between frames
-- Saves a frame only when a meaningful change is detected
+- The web frontend sends files to the configured OCR API
+- Image uploads are processed in memory
+- Video uploads are written to a temporary file for frame sampling and then removed
+- The browser keeps current results only for the active page session unless you export/copy them yourself
 
-This means:
-- You get one image per Pokémon
-- Duplicate frames are skipped automatically
-- You don’t need to manually trim your video
-
-### How It Works
-
-1) Upload a video
-2) Drag to select the pokemon preview screen
-3) Adjust the difference threshold if needed
-4) Extract frames
-5) Send frames directly to OCR or download them as ZIP
-
-The original concept for this frame extraction approach was inspired by:
-BigCurry – Niche PokeMMO Tools 
-https://bigcurry.github.io/Niche-PokeMMO-Tools/
-https://github.com/BigCurry/Niche-PokeMMO-Tools
-
----
-
-## Privacy & Data Handling
-
-This tool **does not log or store Pokémon data**.
-
-**Why?**
-- Pokémon teams are sensitive competitive information
-- Users should remain in full control of their data
-- Keeps hosting costs low and avoids data liability
-
-All uploads are processed in-memory and discarded immediately after processing.
-
----
+Host the API yourself if you need full control over privacy, access, logging, or retention.
 
 ## Feedback
 
-This project was created for the PokéMMO community to save time and reduce manual work.
-Feedback, bug reports, and improvement ideas are welcome.
-
-PokéMMO Forums  
-https://forums.pokemmo.com/index.php?/profile/558365-mylis/
-
-Discord  
-.Mylis
-
----
+- Forums: https://forums.pokemmo.com/index.php?/profile/558365-mylis/
+- Discord: `.mylis`
 
 ## Disclaimer
 
-Pokémon and PokéMMO are trademarks of their respective owners.
-This project is community-made and not affiliated with PokéMMO or Pokémon.
+Pokemon and PokeMMO are trademarks of their respective owners.
+This project is community-made and is not affiliated with Pokemon or PokeMMO.
