@@ -29,6 +29,7 @@
     var statusEl = document.getElementById("status");
     var btnClear = document.getElementById("btnClear");
     var btnCsv = document.getElementById("btnCsv");
+    var btnTransferToBox = document.getElementById("btnTransferToBox");
     var tbl = document.getElementById("tbl");
     var tbody = document.getElementById("tbody");
     var emptyState = document.getElementById("emptyState");
@@ -45,6 +46,7 @@
     // Copy all bars
     var btnCopyAllPokePasteTable = document.getElementById("btnCopyAllPokePasteTable");
     var btnCopyAllPokePasteMobile = document.getElementById("btnCopyAllPokePasteMobile");
+    var btnTransferToBoxMobile = document.getElementById("btnTransferToBoxMobile");
     var mobileCopyAllBar = document.getElementById("mobileCopyAllBar");
 
     // OTS
@@ -98,6 +100,8 @@
     // State
     // -------------------------
     var cancelRequested = false;
+    var processingInProgress = false;
+    var transferInProgress = false;
 
     // keep data between loads until cleared/closed
     var store = {
@@ -131,7 +135,10 @@
     // -------------------------
     // Config
     // -------------------------
+    var isLocalHost = /^(localhost|127\.0\.0\.1)$/i.test(window.location.hostname || "");
     var apiBase = (getQueryParam("api") || "https://api.mylis.net").replace(/\/+$/, "");
+    var boxBase = (getQueryParam("box") || (isLocalHost ? "http://localhost:8080" : "https://box.mylis.net")).replace(/\/+$/, "");
+    var boxApiBase = (getQueryParam("boxApi") || (isLocalHost ? "http://localhost:8002" : "https://backend.mylis.net")).replace(/\/+$/, "");
     var debugEnabled = String(getQueryParam("debug") || "").toLowerCase();
     debugEnabled = (debugEnabled === "1" || debugEnabled === "true" || debugEnabled === "yes" || debugEnabled === "on");
 
@@ -170,6 +177,7 @@
         if (emptyState) emptyState.style.display = "";
 
         if (btnCsv) btnCsv.disabled = true;
+        updateTransferButtons();
         setStatus("Cleared.");
     }
 
@@ -195,6 +203,8 @@
 
         if (!rows.length && allRowsCount() === 0) setStatus("No results yet.");
         else setStatus("Pokemon deleted.");
+
+        updateTransferButtons();
     }
 
     // -------------------------
@@ -363,6 +373,112 @@
         });
     }
 
+    function currentPageUrl() {
+        if (window.location.origin && window.location.origin !== "null") {
+            return window.location.origin + window.location.pathname;
+        }
+        return "https://mylis.github.io/pokemmo_ocr/";
+    }
+
+    function getTransferableRows() {
+        return (store.parse || []).filter(Boolean).map(function(row) {
+            var clean = {};
+            Object.keys(row || {}).forEach(function(key) {
+                if (key.charAt(0) === "_") return;
+                clean[key] = row[key];
+            });
+            return clean;
+        });
+    }
+
+    function applyTransferButtonState(btn, count) {
+        if (!btn) return;
+
+        btn.disabled = !count || processingInProgress || transferInProgress;
+        btn.textContent = transferInProgress ? "Preparing Box import..." : "Import into Box";
+        btn.title = count ? ("Create a Box import for " + count + " Pokemon.") : "Process standard OCR results first.";
+    }
+
+    function updateTransferButtons() {
+        var count = getTransferableRows().length;
+        applyTransferButtonState(btnTransferToBox, count);
+        applyTransferButtonState(btnTransferToBoxMobile, count);
+    }
+
+    async function createBoxTransfer() {
+        if (window.location.protocol === "file:") {
+            setStatus("Open PokeMMO OCR through a local web server like http://localhost:5173, not as a file:// page.");
+            return;
+        }
+
+        var rows = getTransferableRows();
+        if (!rows.length) {
+            setStatus("Process standard OCR results first.");
+            updateTransferButtons();
+            return;
+        }
+
+        transferInProgress = true;
+        updateTransferButtons();
+        setStatus("Creating Box import for " + rows.length + " Pokemon...");
+
+        try {
+            var response = await fetch(boxApiBase + "/pokemon/transfers/ocr", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    source: "pokemmo_ocr",
+                    title: rows.length === 1 ? "OCR Import (1 Pokemon)" : "OCR Import (" + rows.length + " Pokemon)",
+                    source_url: currentPageUrl(),
+                    rows: rows
+                })
+            });
+
+            var payload = null;
+            var rawText = "";
+            var contentType = response.headers.get("content-type") || "";
+
+            if (contentType.indexOf("application/json") !== -1) {
+                payload = await response.json();
+            } else {
+                rawText = await response.text();
+            }
+
+            if (!response.ok) {
+                var detail = payload && payload.detail;
+                if (Array.isArray(detail)) {
+                    detail = detail.map(function(item) {
+                        return item && item.msg ? item.msg : "";
+                    }).filter(Boolean).join(" ");
+                }
+                throw new Error(detail || rawText || ("Request failed with status " + response.status + "."));
+            }
+
+            var transferToken = payload && payload.transfer_token;
+            if (!transferToken) {
+                throw new Error("Box transfer did not return a transfer token.");
+            }
+
+            var redirectUrl = new URL(boxBase + "/");
+            redirectUrl.searchParams.set("transfer", transferToken);
+
+            setStatus("Redirecting to Box...");
+            window.location.assign(redirectUrl.toString());
+        } catch (error) {
+            console.error(error);
+            setStatus(error && error.message ? error.message : "Could not create Box transfer.");
+        } finally {
+            transferInProgress = false;
+            updateTransferButtons();
+        }
+    }
+
+    if (btnTransferToBox) btnTransferToBox.addEventListener("click", createBoxTransfer);
+    if (btnTransferToBoxMobile) btnTransferToBoxMobile.addEventListener("click", createBoxTransfer);
+    updateTransferButtons();
+
     // -------------------------
     // Processing
     // -------------------------
@@ -375,10 +491,12 @@
 
         lastMode = mode;
         cancelRequested = false;
+        processingInProgress = true;
 
         if (btnClear) btnClear.disabled = true;
         if (btnFirestore) btnFirestore.disabled = true;
         if (btnCsv) btnCsv.disabled = true;
+        updateTransferButtons();
 
         try {
             var total = files.length;
@@ -421,6 +539,8 @@
                 if (mode === "firestore") renderFirestore(active);
                 else renderRows(active);
 
+                updateTransferButtons();
+
                 done++;
                 showLoadingWithProgress(titleBase, done, total);
                 if (isVid && data && (typeof data.frames_total === "number") && (typeof data.frames_unique === "number")) {
@@ -442,6 +562,7 @@
             console.error(err);
             setStatus(String(err && err.message ? err.message : err));
         } finally {
+            processingInProgress = false;
             hideLoading();
 
             if (btnClear) btnClear.disabled = false;
@@ -452,6 +573,8 @@
                 if (mode === "firestore") btnCsv.disabled = true;
                 else btnCsv.disabled = !(active3 && active3.length);
             }
+
+            updateTransferButtons();
         }
     }
 

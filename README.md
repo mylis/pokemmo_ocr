@@ -27,6 +27,7 @@ Links:
 - Copy individual PokePaste blocks or copy all at once
 - Toggle OTS mode in the UI
 - Export CSV from standard OCR results
+- Send OCR results straight into PokeMMO Box through the transfer flow
 - Hide or include the PokePaste column in CSV export
 - View Firestore JSON and copy each record or the full JSON bundle
 - Delete individual OCR results from the current session
@@ -105,12 +106,14 @@ You can also open `index.html` directly, but using the local server is the smoot
 | Parameter | Description |
 | --- | --- |
 | `api` | Override the API base URL. Default is `https://api.mylis.net` |
+| `box` | Override the Box frontend URL. Default is `https://box.mylis.net` |
+| `boxApi` | Override the Box backend URL used for OCR transfers. Default is `https://backend.mylis.net` |
 | `debug=1` | Show Firestore/debug UI, including the Firestore button and extra debug panels |
 
 Example:
 
 ```text
-http://localhost:5173/?api=http://localhost:8000&debug=1
+http://localhost:5173/?api=http://localhost:8000&box=http://localhost:8080&boxApi=http://localhost:8002&debug=1
 ```
 
 ### Web Workflow
@@ -118,7 +121,8 @@ http://localhost:5173/?api=http://localhost:8000&debug=1
 1. Upload screenshots, videos, or a mix of both.
 2. The app routes images to image endpoints and videos to video endpoints automatically.
 3. Standard mode renders PokePaste-ready results and enables CSV export.
-4. Debug mode also exposes Firestore JSON output and extra OCR diagnostics.
+4. Standard mode can also hand the current OCR rows to PokeMMO Box for login, registration, and final import there.
+5. Debug mode also exposes Firestore JSON output and extra OCR diagnostics.
 
 ## Unique Frame Extractor
 
